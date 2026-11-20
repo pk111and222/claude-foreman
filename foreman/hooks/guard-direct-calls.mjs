@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// PreToolUse 钩子：拦下直接调用 codex exec / codex review / opencode run / pi / agy / codebuddy 跑模型的 Bash 和 PowerShell 命令，
+// PreToolUse 钩子：拦下直接调用 codex exec / codex review / opencode run / pi / agy / codebuddy / dsh headless / zcode 跑模型的 Bash 和 PowerShell 命令，
 // 要求改走 cli.mjs。退出码 2 会阻止这次调用，并把 stderr 的内容反馈给 Claude。
 
 import fs from 'node:fs';
@@ -11,11 +11,11 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const SCRIPT = path.join(HERE, '..', 'skills', 'dispatch', 'scripts', 'cli.mjs');
 
 const MESSAGES = {
-  zh: `已拦截：不要直接调用 codex exec / codex review / opencode run / pi / agy / codebuddy。协作方的调用都必须通过 foreman 插件的脚本：
+  zh: `已拦截：不要直接调用 codex exec / codex review / opencode run / pi / agy / codebuddy / dsh headless / zcode。协作方的调用都必须通过 foreman 插件的脚本：
   node "${SCRIPT}" <run|discuss|review|resume|plan|submit|image> ...
 用法见 foreman:dispatch skill。测试、验收和一次性问答也一样，只读问答用 discuss。
 如果是脚本本身满足不了的需求（比如沙箱导致协作方无法运行），停下来把情况告诉用户，由用户决定，不要设法绕过。`,
-  en: `Blocked: don't call codex exec / codex review / opencode run / pi / agy / codebuddy directly. Every call to an agent must go through the foreman-en plugin's script:
+  en: `Blocked: don't call codex exec / codex review / opencode run / pi / agy / codebuddy / dsh headless / zcode directly. Every call to an agent must go through the foreman-en plugin's script:
   node "${SCRIPT}" <run|discuss|review|resume|plan|submit|image> ...
 See the foreman-en:dispatch skill. This applies to tests, checks and one-off questions too; use discuss for read-only questions.
 If the script can't do what's needed (for example a sandbox stops an agent from running), stop and tell the user so they can decide. Don't look for a way around it.`,
@@ -119,7 +119,7 @@ function callsAgentDirectly(command) {
     if (glued) tokens.splice(i, 1, glued[1], glued[2]);
     const first = base(tokens[i] || '');
     let rest;
-    let opencode = false, pi = false, agy = false, codebuddy = false;
+    let opencode = false, pi = false, agy = false, codebuddy = false, headless = null;
     const npx = /^npx(\.cmd)?$/.test(first) ? npxPackage(tokens, i) : null;
     if (npx?.call && callsAgentDirectly(npx.call)) return true;
     const npxRuns = (pattern) => !!npx && npx.pkgs.some((pkg) => pattern.test(pkg));
@@ -135,8 +135,21 @@ function callsAgentDirectly(command) {
     else if (/^(?:codebuddy|cbc)(?:-code|-lowmem|-prewarm)?(?:\.exe|\.cmd|\.ps1)?$/.test(first)) { rest = tokens.slice(i + 1); codebuddy = true; }
     else if (/^node(\.exe)?$/.test(first) && CB_ENTRY.test((tokens[i + 1] || '').replace(/^["']|["']$/g, ''))) { rest = tokens.slice(i + 2); codebuddy = true; }
     else if (npxRuns(/^@tencent-ai\/codebuddy-code(@.*)?$/)) { rest = tokens.slice(npx.rest); codebuddy = true; }
+    else if (/^dsh(\.exe|\.cmd|\.ps1)?$/.test(first) || npxRuns(/^@deepseek-ai\/dsh(@.*)?$/)) {
+      rest = tokens.slice(npxRuns(/^@deepseek-ai\/dsh(@.*)?$/) ? npx.rest : i + 1); headless = 'dsh';
+    } else if (/^zcode(\.exe|\.cmd|\.ps1)?$/.test(first) || npxRuns(/^zcode-app-cli(@.*)?$/)
+      || /^node(\.exe)?$/.test(first) && /^zcode\.(cjs|js)$/.test(base(tokens[i + 1] || ''))) {
+      rest = tokens.slice(npxRuns(/^zcode-app-cli(@.*)?$/) ? npx.rest : i + (/^node(\.exe)?$/.test(first) ? 2 : 1)); headless = 'zcode';
+    }
     else continue;
     const words = dropRedirects(rest).map((t) => t.replace(/^["']|["']$/g, ''));
+    if (headless) {
+      if (headless === 'zcode' && words.some((w) => /^(?:--prompt|--target|-p)(?:=|$)/.test(w))) return true;
+      if (headless === 'dsh' && (words[0] === 'headless' || words.includes('--profile=headless')
+        || words.some((w, n) => w === '--profile' && words[n + 1] === 'headless'))
+        && !words.some((w) => ['--help', '-h', '--version', '-v'].includes(w))) return true;
+      continue;
+    }
     if (agy) { if (agyRunsModel(words)) return true; continue; }
     if (codebuddy) { if (codebuddyRunsModel(words, /^cbc(?:\.exe|\.cmd|\.ps1)?$/.test(first))) return true; continue; }
     if (pi) {

@@ -1,11 +1,12 @@
 // 派发计划固定席位和审查材料，真正启动时再检查当前配置并登记任务。
 import fs from 'node:fs';
 import path from 'node:path';
-import { ENTRY, USER_CONFIG, MODULE_CELLS, resolveAgentAlias, resolveProfile, resolveCell, validatePlan, selectScene, isScened, fromProjectConfig } from './config.mjs';
+import { ENTRY, USER_CONFIG, REVIEW_SCHEMA, MODULE_CELLS, resolveAgentAlias, resolveProfile, resolveCell, validatePlan, selectScene, isScened, fromProjectConfig } from './config.mjs';
 import { RUNS_ROOT, CLAUDE_SESSION, listRuns, readMeta, checkRunners, runOutcome } from './records.mjs';
 import { validateReviewMaterial, reviewPatchText, MAX_REVIEW_CHARS } from './review-scope.mjs';
 import { M, die, need, notice, resolveDir, readAttachments, filesOutside, MAX_MATERIAL_CHARS } from './util.mjs';
 import { apiReviewPrompt, API_BRIEF_RESERVE } from './adapters/api.mjs';
+import { zcodePrompt, ZCODE_PROMPT_BYTES } from './adapters/zcode-cli.mjs';
 import { D, outcomeStyle } from './format.mjs';
 import { modelIdentity } from './models.mjs';
 
@@ -107,12 +108,18 @@ function cmdPlan(o, load, adapters) {
     const tools = [...new Set(seats.filter((seat) => adapters[cfg.agents[seat.agent]?.type]?.capabilities.isolation === 'tools').map((seat) => seat.agent))];
     if (outside.length && tools.length) die(M.planFilesOutsideCwd(M.list(tools), M.list(outside)));
   }
+  if (o.module === 'review' && seats.some(({ agent }) => cfg.agents[agent].type === 'zcode cli')) {
+    const prompt = zcodePrompt({ kind: 'review', reviewTarget: plan.review.target, reviewScope: material, brief: '' },
+      readAttachments(o.file, cwd, true), fs.readFileSync(REVIEW_SCHEMA, 'utf8'));
+    const bytes = Buffer.byteLength(prompt) + API_BRIEF_RESERVE;
+    if (bytes > ZCODE_PROMPT_BYTES) die(M.zcodePromptLarge(bytes, ZCODE_PROMPT_BYTES));
+  }
   // 建计划时按各席运行时的材料预算检查，免得启动前被拒而一直等不到记录。
   if (material?.target === 'diff') {
     const max = { cli: MAX_REVIEW_CHARS, api: MAX_MATERIAL_CHARS, reserve: API_BRIEF_RESERVE };
     const tooLarge = seats.flatMap((seat) => {
       const type = cfg.agents[seat.agent].type;
-      if (type === 'codex cli') return [];
+      if (type === 'codex cli' || type === 'zcode cli') return [];
       if (type === 'api') {
         const { prompt } = apiReviewPrompt({ cwd, target: 'diff', scope: material, brief: '', files: readAttachments(o.file, cwd, true) });
         const chars = prompt.length + max.reserve;

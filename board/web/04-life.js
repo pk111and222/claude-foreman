@@ -95,16 +95,56 @@ function lifeState(E, O, read, t) {
   return c < OUT_COLLAPSE ? { phase: 'collapse', from: E, to: read, age: c } : { phase: 'gone', from: E };
 }
 
-// 席位：以它最近一次任务为准；实际输出 = 第一次改文件或任务结束；读走 = 结束后 Claude Code 第一次取结果（或给它记了裁决）
-// 某次任务到 t 为止：第一次有实际输出的时刻 O，被 Claude Code 读走的时刻 read（都没有就是 Infinity）
+// 席位的产出和读走时间被排版、动效反复查询。按事件版本建索引，不再为每个历史席位扫描整条车道。
+const FIRST_EDITS = new WeakMap(), COLLECTS = new WeakMap(), VERDICTS = new WeakMap();
+function eventIndex(lane, cache, build) {
+  const hit = cache.get(lane);
+  if (hit?.events === lane.events && hit.ver === lane.ver) return hit.index;
+  const index = build(lane.events);
+  cache.set(lane, { events: lane.events, ver: lane.ver, index });
+  return index;
+}
+function firstByRun(events, kind) {
+  const first = new Map();
+  for (const e of events) if (e.k === kind && !first.has(e.run)) first.set(e.run, e);
+  return first;
+}
+function collectsByLane(events) {
+  const byLane = new Map();
+  for (const e of events) if (e.k === 'collect') for (const id of e.target || []) {
+    if (!byLane.has(id)) byLane.set(id, []);
+    byLane.get(id).push(e.ts);
+  }
+  return byLane;
+}
+function firstCollect(laneId, end) {
+  const cc = B.laneById.get('cc');
+  const times = cc && eventIndex(cc, COLLECTS, collectsByLane).get(laneId);
+  if (!times) return Infinity;
+  let lo = 0, hi = times.length;
+  while (lo < hi) { const mid = (lo + hi) >>> 1; if (times[mid] < end) lo = mid + 1; else hi = mid; }
+  return times[lo] ?? Infinity;
+}
+const firstEdits = (events) => firstByRun(events, 'edit');
+function firstVerdict(runId) {
+  const events = B.life;
+  let hit = VERDICTS.get(events);
+  // B.life 原地追加时长度变；重置、删除或替换计划时会换数组。
+  if (hit?.size !== events.length) {
+    hit = { size: events.length, index: firstByRun(events, 'verdict') };
+    VERDICTS.set(events, hit);
+  }
+  return hit.index.get(runId)?.ts ?? Infinity;
+}
+// 查询仍按 t 截断：直播迟到的事件、定格和回放共用这套索引。
 function outTimes(lane, r, t) {
   const ended = r.ended_at != null && r.ended_at <= t;
   let O = ended ? shownAt(r.ended_at, r.ended_seen) : Infinity, read = Infinity;
-  for (const e of lane.events) if (e.run === r.id && e.k === 'edit' && e.ts <= t) { O = Math.min(O, shownAt(e.ts, e.seen)); break; }
+  const edit = eventIndex(lane, FIRST_EDITS, firstEdits).get(r.id);
+  if (edit && edit.ts <= t) O = Math.min(O, shownAt(edit.ts, edit.seen));
   if (ended) {
-    const cc = B.laneById.get('cc');
-    if (cc) for (const e of cc.events) if (e.k === 'collect' && e.ts >= r.ended_at && e.ts <= t && (e.target || []).includes(lane.id)) { read = e.ts; break; }
-    for (const v of B.life) if (v.k === 'verdict' && v.run === r.id && v.ts <= t) read = Math.min(read, v.ts);
+    const first = Math.min(firstCollect(lane.id, r.ended_at), firstVerdict(r.id));
+    if (first <= t) read = first;
   }
   return { O, read };
 }

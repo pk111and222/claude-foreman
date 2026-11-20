@@ -432,6 +432,7 @@ class DisplayElement {
   set innerHTML(v) {
     this.text = ''; this.children = [];
     if (v.startsWith('<span class="av"')) this.children = Array.from({ length: 10 }, () => new DisplayElement());
+    if (v.startsWith('<svg ')) { const svg = new DisplayElement(); svg.append(new DisplayElement()); this.append(svg); }
     if (v.startsWith('<div class="tr th"')) { this.children = [new DisplayElement(), new DisplayElement(), new DisplayElement()]; this.nodes.set('.tbody', this.children[1]); this.nodes.set('.total', this.children[2]); }
   }
   querySelector(sel) {
@@ -442,6 +443,7 @@ class DisplayElement {
   insertBefore(el, before) { el.remove(); el.parent = this; this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, el); }
   replaceChildren(...xs) { this.children = []; this.append(...xs); }
   remove() { if (this.parent) this.parent.children.splice(this.parent.children.indexOf(this), 1); this.parent = null; }
+  setAttribute(name, value) { (this.attrs ??= new Map()).set(name, String(value)); }
   addEventListener() {} getBoundingClientRect() { return { top: 0 }; }
 }
 function displayBoard(lang = 'zh') {

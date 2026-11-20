@@ -24,12 +24,21 @@ function laneElapsed(lane, t, total = false) {
   const activity = last ? last.original_ts ?? Display.recordedTime(last.ts, displayPoints()) : null;
   return (total ? runs : runs.slice(-1)).reduce((n, r) => n + Display.elapsedOf(r, t, displayPoints(), activity), 0);
 }
+// 同一批已到达的事件可供状态、动画和终端重复使用；时间跨过下一条事件才需要重新投影。
+const LIVE_STATES = new WeakMap();
 function liveState(lane, r, t) {
+  const events = lane.events, hit = LIVE_STATES.get(lane);
+  // 跨车道的目标名也来自 B，因此数据版本变化时要重新取。
+  if (hit?.run === r && hit.events === events && hit.ver === lane.ver && hit.version === B.version
+    && t >= hit.from && t < hit.to) return hit.state;
   const state = { speech: null, thought: null, recent: [], kinds: {}, api: {} };
   const byAid = new Map();
   let seq = 0, command = null;
-  for (const ev of lane.events) {
-    if (ev.run !== r.id || ev.ts > t) continue;
+  let from = -Infinity, to = Infinity;
+  for (const ev of events) {
+    if (ev.ts > t) { to = ev.ts; break; }
+    from = ev.ts;
+    if (ev.run !== r.id) continue;
     seq++;
     if (ev.k === 'req') state.api = { req: ev.original_ts ?? Display.recordedTime(ev.ts, displayPoints()) };
     else if (ev.k === 'queued') state.api.queued = true;
@@ -49,6 +58,7 @@ function liveState(lane, r, t) {
     }
   }
   if (!state.api.req && r.queued && !state.speech && !state.recent.length) state.api.queued = true;
+  LIVE_STATES.set(lane, { run: r, events, ver: lane.ver, version: B.version, from, to, state });
   return state;
 }
 // 已经结束的任务，状态只随"后来有没有续接"变：直播时按任务对象缓存（任务记录一更新，页面就换成新对象）。

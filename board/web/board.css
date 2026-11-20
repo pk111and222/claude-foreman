@@ -208,7 +208,8 @@ body.uni #termsec, body.uni #more, body.uni #world, body.uni #view::after, body.
 #table .tbody .tr.gh .cnt i[data-tone="dim"] { color: var(--tone-dim); }
 #table .tbody .tr span:nth-child(4) { color: var(--tint); }
 #table svg { width: 100%; height: 16px; display: block; }
-#table svg polyline { fill: none; stroke: var(--tint); stroke-width: 1.2; vector-effect: non-scaling-stroke; filter: drop-shadow(0 0 2px var(--tint)); }
+/* 小曲线不用逐行滤镜：第一次展开长对话时，阴影着色器会拖慢落地帧。 */
+#table svg polyline { fill: none; stroke: var(--tint); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 #table .total { border-top: 1px solid rgba(200,200,212,.14); color: var(--hi); }
 /* 单对话视图：用量面板行放不下时，合计行最右边（用时那一格本来是空的）放"展开全部"；展开后面板按全部行的高度排开，往下推开终端区 */
 #tall { position: absolute; right: 14px; bottom: 6px; height: 19px; padding: 0 8px; font-size: 10px; letter-spacing: .06em; z-index: 4; }

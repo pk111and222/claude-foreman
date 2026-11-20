@@ -111,3 +111,17 @@ test('重试事件在页面时间线里带上等待秒数，和 watch 的写法�
   assert.ok(context.lineOf(event).text.includes('4'));
   assert.equal(context.lineOf({ ...event, n: 0 }).text, `⚠ ${Display.D.watchApiRetry('network', 0)}`);
 });
+
+test('实时内容同一事件区间复用，回放跳转和实时事件更改不复用旧状态', () => {
+  const p = page([cmd('a', 'node demo.mjs', 10), done('a', false, 20)]);
+  const at = (t) => p.liveState(p.lane, run, t);
+  const before = at(10);
+  assert.equal(at(19), before);
+  assert.equal(at(20).recent[0].tag, '✗ failed');
+  assert.equal(at(15).recent[0].tag, undefined);
+  assert.equal(at(5).recent.length, 0);
+  p.lane.events.splice(1, 0, cmd('b', 'git status', 10)); p.lane.ver = 1;
+  assert.equal(at(15).recent.length, 2);
+  p.lane.events = [];
+  assert.equal(at(15).recent.length, 0);
+});

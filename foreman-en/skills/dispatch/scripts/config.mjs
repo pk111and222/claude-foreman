@@ -371,7 +371,7 @@ function renameAgentsByModel(config, adapters) {
     return id;
   };
   const add = (name, agent) => {
-    const base = nameOf(name, agent), suffix = { 'codex cli': 'codex', 'opencode cli': 'opencode', 'pi cli': 'pi', 'agy cli': 'agy', 'codebuddy cli': 'codebuddy', api: 'api' }[agent.type];
+    const base = nameOf(name, agent), suffix = { 'codex cli': 'codex', 'opencode cli': 'opencode', 'pi cli': 'pi', 'agy cli': 'agy', 'codebuddy cli': 'codebuddy', 'dsh cli': 'dsh', 'zcode cli': 'zcode', api: 'api' }[agent.type];
     let id = base;
     for (let n = 1; Object.hasOwn(agents, id); n++) {
       if (isDeepStrictEqual(agents[id], agent)) return id;
@@ -517,6 +517,7 @@ function validateConfig(cfg, adapters, fail = die, prefix = 'modules', own = nul
       check(item.model == null || (text(item.model) && item.model !== CLAUDE_CODE), `${at}.model`, why.modelName);
       check(item.effort === undefined || agent.type === 'agy cli' && item.effort === null || (adapter.efforts ? adapter.efforts.includes(item.effort) : item.effort === null || text(item.effort)), `${at}.effort`,
         adapter.efforts ? why.effortValue(item.effort, adapter.efforts.join(' / ')) : why.apiEffort);
+      if (adapter.cliManagedModel) check(item.model == null, `${at}.model`, M.headlessManagedModel(adapter.channel));
       if (agent.type === 'agy cli' && AGY_EFFORTS.includes(item.effort)) {
         const model = item.model || agent.model, split = splitAgyModel(model);
         check(!split.effort, `${at}.effort`, M.agyEffortFullId(model, item.effort, split.family));
@@ -645,6 +646,10 @@ function detectEnvironment(adapters, agents = {}) {
     pi: { found: piFound, models: piModels?.status === 0 && !/No models available/i.test(piModels.stdout) ? Math.max(0, piModels.stdout.trim().split(/\r?\n/).filter(Boolean).length - 1) : 0 },
     agy: { found: agyFound, models: agyModels?.status === 0 ? agyModels.stdout.trim().split(/\r?\n/).filter((s) => s.includes('\t')).length : 0 },
     codebuddy: { found: cbFound, models: cbList ? cbList.split(',').map((s) => s.trim()).filter(Boolean).length : 0 },
+    ...Object.fromEntries(Object.values(adapters).filter((a) => a.cliManagedModel).map((a) => {
+      const version = call(a.type, ['--version']);
+      return [a.type.split(' ')[0], { found: !version.error && version.status === 0, version: version.stdout?.trim() || null }];
+    })),
     api_keys: ['DEEPSEEK_API_KEY', 'KIMI_API_KEY', 'MOONSHOT_API_KEY', 'MIMO_API_KEY'].filter((key) => !!process.env[key]) };
 }
 
@@ -902,6 +907,7 @@ function resolveProfile(cfg, seat, o, adapters, fallbackModel = null, parentAgen
   if (mode === 'run' && (!image || level === 'draw') && adapter.capabilities.isolation === 'tools' && !agent.run_access) die(M.runAccessRequired(entry.agent, agent.type));
   if (mode === 'run' && adapter.capabilities.isolation !== 'os' && o['no-snapshot']) die(M.snapshotRequired);
   if (effort !== undefined && effort !== null && adapter.efforts && !adapter.efforts.includes(effort)) die(M.effortChoices(adapter.efforts.join(' / ')));
+  if (o.model != null && adapter.cliManagedModel) die(M.headlessManagedModel(adapter.channel));
   const base = entry.model || agent.model || fallbackModel;
   const model = o.model || base;
   if (agent.type === 'agy cli') {

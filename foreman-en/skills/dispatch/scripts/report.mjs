@@ -42,6 +42,7 @@ export const environmentReport = (checks, environment, agents) => {
       ['pi', pi.found ? M.reportModelsInstalled(pi.models) : M.reportNotInstalled],
       ['agy', agy?.found ? [M.reportModelsInstalled(agy.models), ...agyStatus].join(' · ') : M.reportNotInstalled],
       ['codebuddy', codebuddy?.found ? M.reportModelsInstalled(codebuddy.models) : M.reportNotInstalled],
+      ...['dsh', 'zcode'].map((name) => [name, environment[name]?.found ? M.reportCliManagedModel(environment[name].version) : M.reportNotInstalled]),
       [M.reportApiVariables, (api_keys.length ? M.reportVariablesFound(M.list(api_keys)) : M.reportNoVariables) + (keys ? M.reportConfigKeys(keys) : '')],
       [M.reportMemoryLabel, M.reportMemory(total_gb, available_gb)],
       [M.reportWebLabel, web ? enough ? M.reportWebOn : M.reportWebOnLow : enough ? M.reportWebOff : M.reportWebOffLow],
@@ -219,6 +220,9 @@ export const modelsReport = (catalog) => {
       table([...M.reportModelHeaders.slice(0, 3), M.reportPrice, M.reportModelHeaders[3]], [...models].sort((a, b) => a.id.localeCompare(b.id)).map((model) => [
         model.id.slice(provider.length + 1), efforts(model), context(model.context), price(model.cost), configured(type, model),
       ])));
+  }
+  for (const [type, cat] of Object.entries(catalog.tools).filter(([, entry]) => entry.cli_managed_model)) {
+    blocks.push(cat.ok ? `${type}: ${M.reportCliManagedModel(cat.version)}` : M.reportCatalogError(type, cat.error));
   }
   if (api.some(([, cat]) => cat.ok)) blocks.push(M.reportApiTitle, table(M.reportApiHeaders, apiRows.map(([name, model]) => [name, model.id, context(model.context), catalog.agents[name]?.configured_models.includes(model.id) ? name : ''])));
   if (omitted) blocks.push(M.reportNonChat(omitted));

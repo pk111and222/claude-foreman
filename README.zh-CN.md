@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-blue?logo=linux&logoColor=white)](https://linux.do)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DaydayupV/claude-foreman/pulls)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pk111and222/claude-foreman/pulls)
 [![GitHub stars](https://img.shields.io/github/stars/DaydayupV/claude-foreman?style=social)](https://github.com/DaydayupV/claude-foreman/stargazers)
 
 [English](README.md)
@@ -27,28 +27,37 @@
 
 ## 安装和设置
 
-### 推荐：Claude 桌面版导入 release 包
+这是 [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman) 的 [pk111and222 分支仓库](https://github.com/pk111and222/claude-foreman)。本仓库复用了 CodeBuddy 接入，增加了 [DSH 和 ZCode 的只读讨论与文本审查](#接入-dsh-和-zcode)，并[优化了高分屏上的网页看板渲染](tools/board-bench/render-performance.md)。
 
-插件主要在 Claude 桌面版的 Code 页里开发和测试：派活后实时画面会自动在终端面板里打开、切到前台（网页看板关着时），启动动画也是按桌面版的终端调的。
+### 在 Claude Code 中安装本仓库版本
 
-1. 从[最新 release](https://github.com/DaydayupV/claude-foreman/releases/latest) 下载插件包：中文版是 `foreman.plugin`，英文版是 `foreman-en.plugin`。两者只有语言不同，装一个就行（见[中文版和英文版](#中文版和英文版)）。同一个插件的 `.zip` 和 `.plugin` 内容完全相同，任选一个。
-2. 在 Claude 桌面版里把这个文件作为插件上传，装好后列在"我的上传"里。
-3. 打开 Code 页，运行 `/foreman:setup`（英文版是 `/foreman-en:setup`），见下面的[运行设置](#运行设置)。
-
-升级时下载新版 release，照样上传，再到"我的上传"里删掉旧版：新上传的可能和旧版并存，不会自动替换。
-
-### 也可以：从 marketplace 安装
-
-用命令行版，或者在桌面版里不想上传文件时，在 Claude Code 里运行：
+在你的项目目录运行 `claude`，然后在 **Claude Code 对话里**依次输入：
 
 ```
-/plugin marketplace add DaydayupV/claude-foreman
+/plugin marketplace add pk111and222/claude-foreman
 /plugin install foreman@claude-foreman
 ```
 
-英文版装 `foreman-en@claude-foreman`。升级时运行 `/plugin marketplace update claude-foreman`。命令行版派活、审查、讨论都和桌面版一样，区别只是实时查看要你自己在另一个终端里运行 Claude Code 给出的命令。
+英文版改装 `foreman-en@claude-foreman`，中英文二选一。安装后打开新的 Claude Code 会话，运行 `/foreman:setup`（英文版为 `/foreman-en:setup`）。详见[运行设置](#运行设置)。
 
-从 codex-bridge 升级的，见[后面的说明](#从-codex-bridge-升级)。
+**从上游切换？** 两个仓库的 marketplace 都叫 `claude-foreman`。先运行 `/plugin uninstall foreman@claude-foreman`（英文版用 `/plugin uninstall foreman-en@claude-foreman`），再运行 `/plugin marketplace remove claude-foreman`，然后按上面的命令安装本仓库版本。如果之前在 Claude 桌面版上传过上游插件包，先到「我的上传」移除旧副本，避免两份插件同时启用。[从 codex-bridge 升级](#从-codex-bridge-升级)另有迁移步骤。
+
+**更新本仓库版本：** 在终端执行下面两条命令，再重启 Claude Code。英文版将第二条的 `foreman` 换成 `foreman-en`。
+
+```sh
+claude plugin marketplace update claude-foreman
+claude plugin update foreman@claude-foreman
+```
+
+### 从本地仓库试用
+
+在本地克隆的仓库根目录执行下方命令。这只在**本次会话**加载插件；如果要在另一个项目里试用，就在那个项目目录运行，并传入插件目录的绝对路径。若已安装过，试用前请禁用已安装的插件，避免钩子重复运行。
+
+```sh
+claude --plugin-dir "$PWD/foreman"  # 英文版用 "$PWD/foreman-en"
+```
+
+启动后运行对应的 `/foreman:setup` 或 `/foreman-en:setup`。[上游 Release](https://github.com/DaydayupV/claude-foreman/releases/latest) 的上传包是上游构建，不会安装本仓库版本。
 
 ### 前提
 
@@ -316,6 +325,8 @@ flowchart TD
 | `pi cli` | 本机的 pi，接入它支持的各家模型 | 同 opencode | 能 | 同 opencode，读写路径由插件注入的守卫检查 | 在 pi 里登录的厂商 |
 | `agy cli` | 本机的 Agy CLI（Google Antigravity CLI） | 审查、讨论 | 能 | 插件装在 agy 全局钩子里的守卫；只读命令跑在 agy 的沙箱里 | 在 agy 里登录的 Google 账号 |
 | `codebuddy cli` | 本机的 CodeBuddy CLI（腾讯云代码助手），接入它支持的各家模型 | 审查、讨论；写了 `run_access` 还能执行 | 能 | 项目内路径由权限规则限制；`shell` 无系统沙箱 | 在 codebuddy 里登录的腾讯云账号 |
+| `dsh cli` | 官方 DeepSeek `dsh headless` | 讨论和文本审查 | 能 | DSH `read-only` 预设，不审批 | DSH 配置的账号或密钥 |
+| `zcode cli` | ZCode 无界面 CLI（macOS） | 讨论及基于传入材料的文本审查 | 不能 | 独立工作目录，macOS 写入沙箱 | ZCode 配置的 provider |
 | `api` | 兼容 OpenAI 接口的模型 | 讨论、审查（只审文本） | 不能，Claude Code 把相关文件附过去 | 不涉及 | 厂商的 API 余额 |
 
 同一种可以配多个，各用不同模型。Codex 不是必需的。
@@ -377,6 +388,10 @@ Claude Code 每次进入讨论、执行或审查时，都按这一类的标准�
 - 讨论、审查和 `edit` 都用 `dontAsk`，不加载项目和本地设置及 hooks。用户设置有权限 allow 规则、额外可信目录或 hooks 时拒绝启动，并写明配置文件路径。只能读项目内文件；`edit` 用项目内 `Write`/`Edit` 规则加路径守卫，展开符号链接后只批准项目内编辑，保护 `.git` 和 `.codebuddy`。`edit` 还会拒绝用户 deny/ask 规则，避免钩子批准覆盖这些限制。`shell` 还能运行命令且没有系统沙箱。`--strict-mcp-config` 不加载 MCP 服务器。
 - 报告走 codebuddy 原生的 `--json-schema` 结构化输出；若服务端仍返回无效报告，脚本会在同一会话里按通用流程修复一次。
 - `effort` 是 `minimal` 到 `max`，作为 `--effort` 传进去。`codebuddy --help` 只列模型、不列档位，所以 `check` 只能核对是不是这六档之一；模型实际不支持的档位可能被换成最接近的一档。
+
+### 接入 DSH 和 ZCode
+
+在 `agents` 里加 `"dsh": { "type": "dsh cli" }` 或 `"zcode": { "type": "zcode cli" }`，然后把代号加到目标 `modules.<场景>.discuss` 和 `review` 格子。不写 `model`、`effort` 或 `run_access`。DSH 使用官方 `dsh headless`，不走 `dsh-tui`；ZCode 在 macOS 上通过个人 provider 配置接入。详见[配置和版本要求](foreman/skills/dispatch/references/config.md)。先跑 `check --agent dsh` / `check --agent zcode`；讨论可以续接，审查按 Foreman 原有规则不续接。参见[实测说明](docs/headless-worker-verification.md)。
 
 ### 接入 agy
 

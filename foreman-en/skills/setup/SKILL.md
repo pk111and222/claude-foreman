@@ -46,6 +46,7 @@ When pasting script output, replace the script's own level 1 and 2 headings with
    - If an opencode or pi model the user wants isn't in ②, the end of ② already says how to sign in; don't repeat it.
    - pi doesn't report an unsupported level and quietly switches to another, so pick efforts only from the ones listed in ②.
    - For agy, the agent's `model` is the model family (such as `gemini-3.8-flash`) and the level goes in the cell's `effort`, picked only from the levels ② lists for that model; leave it out for models with none.
+   - DSH and ZCode use their own configured default models. Leave `model` and `effort` unset, and offer them only for discussions and reviews; see the CLI prerequisites in `references/config.md`.
 
 3. **Check the docs when adding an API model**: only when the user wants a new API model, or wants to put an API agent that isn't in any cell yet into a cell. API agents already in use keep their current effort; don't look them up again.
    - Search the provider's **official docs** (on the provider's own domain), not third-party articles. Find: the model name, the address of the OpenAI-compatible API (`base_url`), whether it accepts `reasoning_effort`, and which values.

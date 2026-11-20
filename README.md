@@ -2,7 +2,7 @@
 
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-blue?logo=linux&logoColor=white)](https://linux.do)
-[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/DaydayupV/claude-foreman/pulls)
+[![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](https://github.com/pk111and222/claude-foreman/pulls)
 [![GitHub stars](https://img.shields.io/github/stars/DaydayupV/claude-foreman?style=social)](https://github.com/DaydayupV/claude-foreman/stargazers)
 
 [中文](README.zh-CN.md)
@@ -27,28 +27,37 @@ Flying into one conversation: four models discussing at once, with each seat's p
 
 ## Install and setup
 
-### Recommended: the Claude desktop app, with the release package
+This is the [`pk111and222/claude-foreman` fork](https://github.com/pk111and222/claude-foreman) of [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman). This fork includes the CodeBuddy integration, adds [DSH and ZCode for read-only discussions and text reviews](#adding-dsh-and-zcode), and [reduces web board render time on high-DPI displays](tools/board-bench/render-performance.md).
 
-The plugin is mainly developed and tested in the Code tab of the Claude desktop app: after each handoff the live view opens in the terminal panel and comes to the front by itself (while the web board is off), and the intro is tuned for the desktop app's terminal.
+### Install this fork in Claude Code
 
-1. Download the package from the [latest release](https://github.com/DaydayupV/claude-foreman/releases/latest): `foreman-en.plugin` for English, or `foreman.plugin` for Chinese. The two differ only in language, so install just one (see [English and Chinese versions](#english-and-chinese-versions)). The `.zip` and `.plugin` files of the same plugin are identical; either one works.
-2. Upload the file as a plugin in the Claude desktop app. It's listed under "My Uploads".
-3. Open the Code tab and run `/foreman-en:setup` (`/foreman:setup` for the Chinese plugin); see [Running setup](#running-setup) below.
-
-To upgrade, download the new release and upload it the same way, then delete the old version from "My Uploads": a new upload can sit next to the old one instead of replacing it.
-
-### Or: install from the marketplace
-
-In the CLI, or in the desktop app if you'd rather not upload a file, run this in Claude Code:
+Start `claude` in your project directory and enter these commands **in the Claude Code chat**:
 
 ```
-/plugin marketplace add DaydayupV/claude-foreman
+/plugin marketplace add pk111and222/claude-foreman
 /plugin install foreman-en@claude-foreman
 ```
 
-For the Chinese plugin, install `foreman@claude-foreman` instead. To upgrade, run `/plugin marketplace update claude-foreman`. The CLI does the same handoffs, reviews and discussions; the only difference is that you run the live-view command Claude Code gives you in another terminal yourself.
+For Chinese, install `foreman@claude-foreman` instead. Install only one language version. Open a new Claude Code session and run `/foreman-en:setup` (or `/foreman:setup` for Chinese). See [Running setup](#running-setup) for configuring your worker CLIs.
 
-Upgrading from codex-bridge? See [below](#upgrading-from-codex-bridge).
+**Switching from upstream?** Both marketplaces use the name `claude-foreman`. Run `/plugin uninstall foreman-en@claude-foreman` (or `/plugin uninstall foreman@claude-foreman` for Chinese), then `/plugin marketplace remove claude-foreman`, before adding this fork. If you uploaded an upstream package in the Claude desktop app, remove that copy from “My Uploads” before enabling the fork there. [Upgrading from codex-bridge](#upgrading-from-codex-bridge) is a separate migration.
+
+**Updating this fork:** Run these in your shell, then restart Claude Code. Use `foreman@claude-foreman` in the second command for Chinese.
+
+```sh
+claude plugin marketplace update claude-foreman
+claude plugin update foreman-en@claude-foreman
+```
+
+### Try a local checkout
+
+From the root of your local clone, run the command below. The plugin is loaded **for this session only**; you can pass an absolute path to the plugin directory to start Claude Code from a different project. Disable any already installed copy for the test to avoid duplicate hooks.
+
+```sh
+claude --plugin-dir "$PWD/foreman-en"  # Use "$PWD/foreman" for Chinese.
+```
+
+Then run `/foreman-en:setup` or `/foreman:setup` for the version you loaded. Packages on the [upstream release page](https://github.com/DaydayupV/claude-foreman/releases/latest) are upstream builds; they do not install this fork.
 
 ### Requirements
 
@@ -316,6 +325,8 @@ A flat `modules` from before (with `discuss`, `run` and so on directly under it)
 | `pi cli` | pi on this machine, with the models it can reach | Same as opencode | Yes | Same as opencode, with file paths checked by a guard the plugin injects | Providers you signed in to in pi |
 | `agy cli` | Agy CLI (Google Antigravity CLI) on this machine | Reviews, discussions | Yes | A guard the plugin installs in agy's global hooks; read-only commands run in agy's sandbox | The Google account you signed in to in agy |
 | `codebuddy cli` | CodeBuddy CLI (Tencent Cloud's coding assistant) on this machine, with the models it can reach | Reviews and discussions; hands-on work once `run_access` is set | Yes | Project-trusted reads and project-only edit writes; shell has no OS sandbox | The Tencent Cloud account you signed in to in codebuddy |
+| `dsh cli` | Official DeepSeek `dsh headless` | Discussions and text reviews | Yes | DSH `read-only` preset, no approvals | DSH's configured account or key |
+| `zcode cli` | ZCode headless CLI (macOS) | Discussions and material-only text reviews | No | Separate workspace, macOS write sandbox | Configured ZCode provider |
 | `api` | A model with an OpenAI-compatible API | Discussions, reviews (text only) | No; Claude Code attaches the relevant files | Not applicable | The provider's API balance |
 
 You can have several agents of one type, each with a different model. Codex isn't required.
@@ -377,6 +388,10 @@ With the CodeBuddy CLI installed (`npm install -g @tencent-ai/codebuddy-code`, c
 - Discussions, reviews and `edit` use `dontAsk`. Project and local settings and hooks aren't loaded. Calls refuse user settings with permission allow rules, additional directories or hooks and name the settings file. Reads stay inside the project. `edit` adds scoped `Write`/`Edit` rules and a path guard that resolves symlinks and authorizes only project-local edits; it protects `.git` and `.codebuddy`. It also refuses user deny/ask rules rather than overriding them with hook approvals. `shell` also runs commands and has no OS sandbox. `--strict-mcp-config` keeps MCP servers out.
 - Reports go through codebuddy's native `--json-schema` structured output; if the service still returns an invalid report, the script makes one repair round in the same session.
 - `effort` is `minimal` to `max`, passed as `--effort`. `codebuddy --help` lists models but not levels, so `check` can only confirm the level is one of the six; a level a model doesn't really support may be mapped to the nearest one.
+
+### Adding DSH and ZCode
+
+Add `"dsh": { "type": "dsh cli" }` or `"zcode": { "type": "zcode cli" }` to `agents`, then add their IDs to the desired `modules.<scene>.discuss` and `review` cells. Do not set `model`, `effort` or `run_access`. Use the official `dsh headless` (not `dsh-tui`). For ZCode, configure a personal provider file and run on macOS. See [configuration and version requirements](foreman-en/skills/dispatch/references/config.md) and run `check --agent dsh` / `check --agent zcode` before use. Discussions support resume; reviews follow Foreman's non-resumable review workflow. See the [verification notes](docs/headless-worker-verification.md).
 
 ### Adding agy
 

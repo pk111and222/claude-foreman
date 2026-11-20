@@ -150,12 +150,19 @@ function headRow(row) {
   return tr;
 }
 
+// 已结束车道的采样数组本身有缓存（04-rates.js）；同一份采样不再生成坐标串。
+const SPARK_CELLS = new WeakMap();
 function sparkSvg(cell, pts) {
+  let spark = SPARK_CELLS.get(cell);
+  if (spark?.pts === pts) return;
+  if (!spark) {
+    cell.innerHTML = '<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><polyline/></svg>';
+    SPARK_CELLS.set(cell, spark = { line: cell.firstChild.firstChild });
+  }
+  spark.pts = pts;
   const max = Math.max(20, ...pts);
   const d = pts.map((v, i) => `${(i * 100) / (pts.length - 1)},${(16 - (v / max) * 14).toFixed(1)}`).join(' ');
-  if (cell.dataset.d === d) return;
-  cell.dataset.d = d;
-  cell.innerHTML = `<svg viewBox="0 0 100 16" preserveAspectRatio="none" aria-hidden="true"><polyline points="${d}"/></svg>`;
+  if (spark.d !== d) { spark.d = d; spark.line.setAttribute('points', d); }
 }
 
 function renderTop(t) {

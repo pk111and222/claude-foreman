@@ -176,12 +176,13 @@ adapters['opencode cli'].locate = () => ({ file: ${JSON.stringify(oc ? process.e
 adapters['pi cli'].locate = () => ({ file: ${JSON.stringify(pi ? process.execPath : path.join(h.home, 'missing-pi.exe'))}, pre: ${JSON.stringify(pi ? [PI] : [])} });
 adapters['agy cli'].locate = () => ({ file: ${JSON.stringify(path.join(h.home, 'missing-agy.exe'))}, pre: [] });
 adapters['codebuddy cli'].locate = () => ({ file: ${JSON.stringify(path.join(h.home, 'missing-codebuddy.exe'))}, pre: [] });
+for (const type of ['dsh cli', 'zcode cli']) adapters[type].locate = () => ({ file: ${JSON.stringify(path.join(h.home, 'missing-headless.exe'))}, pre: [] });
 process.argv.splice(2, 0, 'config');
 await import(${JSON.stringify(pathToFileURL(BRIDGE).href)});`);
   const env = { ...s.env, ...Object.fromEntries(keys.map((key) => [key, 'synthetic-key'])) };
   const r = await h.start(script, [], { env }).done, c = output(r), cfg = json(h.userConfig);
   assert.equal(c.image_configured, true);
-  assert.deepEqual(c.environment, { codex: { found: codex, logged_in: available }, opencode: { found: oc, models: oc && scenario !== 'empty-models' ? 2 : 0 }, pi: { found: pi, models: pi ? 3 : 0 }, agy: { found: false, models: 0 }, codebuddy: { found: false, models: 0 }, api_keys: keys });
+  assert.deepEqual(c.environment, { codex: { found: codex, logged_in: available }, opencode: { found: oc, models: oc && scenario !== 'empty-models' ? 2 : 0 }, pi: { found: pi, models: pi ? 3 : 0 }, agy: { found: false, models: 0 }, codebuddy: { found: false, models: 0 }, dsh: { found: false, version: null }, zcode: { found: false, version: null }, api_keys: keys });
   assert.deepEqual(Object.keys(cfg.agents), [...(available ? ['gpt-6.1-sol', 'gpt-6-astra'] : []), ...(keys.length ? ['deepseek-v4-pro', 'kimi-k2.6', 'mimo-v2.6-pro'] : [])]);
   assert.equal(cfg.modules.default.run.simple, 'claude code');
   assert.equal(cfg.modules.default.run.normal, 'claude code');

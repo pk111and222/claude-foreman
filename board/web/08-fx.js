@@ -30,18 +30,25 @@ function glowDot(x, y, r, color, a = 1) {
 // ---- 辉光层 ----
 // 看板的两层画布（弧线区、上面那层）画的时候，光点外面那圈柔光不直接画上去，先画进一张 1/3 分辨率的离屏画布；
 // 整层画完后放大、用叠加（lighter）合上去：低分辨率放大自带柔边，再从它缩出一张 1/6 的叠一次，外面多一圈淡淡的光晕。
-// 不用 ctx.filter 做模糊：冷着色器缓存时滤镜很慢（落地那一帧的已知问题就是速度曲线的阴影滤镜）。
-// 宇宙层不经过这里，照旧直接画。?glow=0 关掉，用来对比和量帧
-const GLOW = { off: Q.get('glow') === '0', on: false, a: { cv: document.createElement('canvas') }, b: { cv: document.createElement('canvas') } };
-GLOW.a.ctx = GLOW.a.cv.getContext('2d'); GLOW.b.ctx = GLOW.b.cv.getContext('2d');
+// 不用 ctx.filter 做模糊：冷着色器缓存时滤镜很慢（特别是第一次飞进长对话时）。
+// 宇宙层也复用这两级，再叠更宽的辉光。?glow=0 关掉，用来对比和量帧
+const GLOW = { off: Q.get('glow') === '0', on: false, layers: new WeakMap() };
+function glowBuffer() {
+  const cv = document.createElement('canvas');
+  return { cv, ctx: cv.getContext('2d') };
+}
 function glowBegin(target) {
   if (GLOW.off) return;
-  const W = Math.ceil(target.canvas.width / 3), H = Math.ceil(target.canvas.height / 3);
-  for (const [buf, w, h] of [[GLOW.a, W, H], [GLOW.b, Math.ceil(W / 2), Math.ceil(H / 2)]]) {
-    if (buf.cv.width !== w || buf.cv.height !== h) { buf.cv.width = w; buf.cv.height = h; }
+  // 飞入飞出时同一帧会画不同分辨率的层；各自留一份缓冲，避免反复调整尺寸、重分配位图。
+  let layer = GLOW.layers.get(target.canvas);
+  if (!layer) { layer = { a: glowBuffer(), b: glowBuffer() }; GLOW.layers.set(target.canvas, layer); }
+  const { a, b } = layer, W = Math.ceil(target.canvas.width / 3), H = Math.ceil(target.canvas.height / 3);
+  for (const [buf, w, h] of [[a, W, H], [b, Math.ceil(W / 2), Math.ceil(H / 2)]]) {
+    if (buf.cv.width !== w) buf.cv.width = w;
+    if (buf.cv.height !== h) buf.cv.height = h;
   }
-  GLOW.a.ctx.setTransform(1, 0, 0, 1, 0, 0); GLOW.a.ctx.clearRect(0, 0, W, H);
-  GLOW.on = true;
+  a.ctx.setTransform(1, 0, 0, 1, 0, 0); a.ctx.clearRect(0, 0, W, H);
+  GLOW.a = a; GLOW.b = b; GLOW.on = true;
 }
 // 柔光画在哪：辉光层开着时是离屏画布（变换和透明度跟着当前画布走，缩成 1/3），否则就是当前画布
 function glowCtx() {
@@ -234,15 +241,17 @@ function sizeCanvas(cv, w, h, dpr) {
 
 function drawFx(t, L) {
   const dpr = devicePixelRatio || 1, { cw: w, ch: h } = viewBox(), T = FLYFX;
-  sizeCanvas(FX.cv, w, h, dpr); sizeCanvas(FX.ov.cv, w, h, dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // 弧线区是星云、柔光和尘埃，限制像素量；上层的文字和交互线条仍按设备像素画。
+  const baseDpr = Math.min(dpr, 1.5);
+  sizeCanvas(FX.cv, w, h, baseDpr); sizeCanvas(FX.ov.cv, w, h, dpr);
+  ctx.setTransform(baseDpr, 0, 0, baseDpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
   const fit = fitGoal();
   // 看板的星空跟着界面一起淡入（宇宙层有自己的星空）
   if (T) ctx.globalAlpha = T.rest;
   drawStars(w, h, fit);
   ctx.globalAlpha = 1;
-  ctx.setTransform(dpr * VIEW.k, 0, 0, dpr * VIEW.k, dpr * VIEW.tx, dpr * VIEW.ty);
+  ctx.setTransform(baseDpr * VIEW.k, 0, 0, baseDpr * VIEW.k, baseDpr * VIEW.tx, baseDpr * VIEW.ty);
   FX.layout = L;
   FX.lw = Math.pow(fit.k / VIEW.k, 0.6);
   const P = portsOf(L);

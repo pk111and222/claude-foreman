@@ -41,3 +41,30 @@ test('上一批结果还没读走的席位照常显示；新一批里续接的�
   // c2 在 a2 还在跑时启动又结束、结果读走：仍是这一批
   assert.deepEqual(at(25 * minute), ['a', 'c']);
 });
+
+test('产出及读走时间索引支持回放跳转、续接和迟到或重置的事件', () => {
+  const r = run('one', 0, 20), next = run('two', 50, 60), worker = lane('seat', r, next);
+  worker.events = [{ run: r.id, k: 'edit', ts: 10, seen: 15 }, { run: r.id, k: 'edit', ts: 12 },
+    { run: next.id, k: 'edit', ts: 53 } ];
+  const collect = (ts, target = ['seat']) => ({ ts, k: 'collect', target });
+  const cc = { events: [collect(19), collect(20, ['other']), collect(25), collect(65)] };
+  const B = { laneById: new Map([['cc', cc]]), life: [{ run: r.id, k: 'verdict', ts: 22 }] };
+  const context = vm.createContext({ B });
+  vm.runInContext(`${source}\nglobalThis.outTimes = outTimes;`, context);
+  const at = (t, task = r) => ({ ...context.outTimes(worker, task, t) });
+  assert.deepEqual(at(100), { O: 15, read: 22 });
+  assert.deepEqual(at(9), { O: Infinity, read: Infinity });
+  assert.deepEqual(at(10), { O: 15, read: Infinity }); // 编辑晚到，开始表现产出仍按 seen
+  assert.deepEqual(at(20), { O: 15, read: Infinity }); // 结束之前取到的是上一轮
+  assert.deepEqual(at(62, next), { O: 53, read: Infinity });
+  assert.deepEqual(at(65, next), { O: 53, read: 65 });
+  cc.events.splice(2, 0, collect(20)); cc.ver = 1; // 直播中插入迟到事件，数组没换
+  assert.deepEqual(at(21), { O: 15, read: 20 });
+  cc.events = [collect(65)]; // 重置历史
+  worker.events = [];
+  assert.deepEqual(at(100), { O: 20, read: 22 });
+  B.life.splice(0, 0, { run: r.id, k: 'verdict', ts: 21 });
+  assert.deepEqual(at(100), { O: 20, read: 21 });
+  B.life = [];
+  assert.deepEqual(at(100), { O: 20, read: 65 });
+});

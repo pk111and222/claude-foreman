@@ -5,5 +5,7 @@ import pi from './pi-cli.mjs';
 import agy from './agy-cli.mjs';
 import codebuddy from './codebuddy-cli.mjs';
 import api from './api.mjs';
+import dsh from './dsh-cli.mjs';
+import zcode from './zcode-cli.mjs';
 
-export const adapters = Object.fromEntries([codex, opencode, pi, agy, codebuddy, api].map((adapter) => [adapter.type, adapter]));
+export const adapters = Object.fromEntries([codex, opencode, pi, agy, codebuddy, dsh, zcode, api].map((adapter) => [adapter.type, adapter]));

@@ -21,6 +21,7 @@ class Element {
     this.text = ''; this.children = [];
     if (value.startsWith('<div class="tr th"')) this.children = [new Element(), new Element(), new Element()];
     if (value.startsWith('<span class="av"')) this.children = Array.from({ length: 10 }, () => new Element());
+    if (value.startsWith('<svg ')) { const svg = new Element(); svg.append(new Element()); this.append(svg); }
   }
   append(...items) { this.children.push(...items.map((x) => typeof x === 'string' ? Object.assign(new Element(), { text: x }) : x)); }
   insertBefore(item, before) { this.children.splice(before ? this.children.indexOf(before) : this.children.length, 0, item); }
@@ -30,6 +31,7 @@ class Element {
     if (!this.nodes.has(key)) this.nodes.set(key, new Element());
     return this.nodes.get(key);
   }
+  setAttribute(name, value) { (this.attrs ??= new Map()).set(name, String(value)); }
   addEventListener() {}
 }
 function board(lang = 'zh', clock = () => 0) {

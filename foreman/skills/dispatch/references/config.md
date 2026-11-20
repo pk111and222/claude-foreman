@@ -159,6 +159,13 @@ CodeBuddy 2.180.0 实测：空 `--setting-sources ""` 会回退到默认作用�
 
 `edit` 和 `shell` 都必须先拍改动快照才开始；`shell` 的命令仍以当前账户权限运行。
 
+**`type: "dsh cli"` / `type: "zcode cli"`**（只读命令行协作方）
+
+- 在 `agents` 中加 `{ "type": "dsh cli" }` 或 `{ "type": "zcode cli" }`，可选 `bin`（可执行文件或 JS 入口的绝对路径）。代号只放进 `discuss` 和 `review` 格子；不写 `model`、`effort` 和 `run_access`，用 CLI 自己配置的默认模型和档位。`models` 不会为这两个工具编造模型清单。
+- DSH 使用官方 `dsh headless`，需要支持 JSON 流、`read-only` 和 `--approval-policy never`（已测 0.2.2-rc.5）。它沿用你信任的 DSH headless profile 和凭据，不使用 `dsh-tui` 或其 profile。配置好再跑 `check`。
+- ZCode 目前仅支持 macOS。CLI 要支持 `--output-format stream-json` 和 `--resume`（已测 `zcode-app-cli` 3.18.2-47，runtime 0.17.1）。在启动 Claude Code/Foreman 的环境中，把 `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` 设为 [ZCode 个人 provider 配置](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/03-config.md)的**绝对路径**，并在其中选好可用的默认模型。有凭据的文件单独保管，不进 Git。Foreman 将 worker 状态与桌面版隔开，不假定可以复用桌面登录态；没有 macOS 写入沙箱时拒绝启动。
+- 两者均支持按运行 ID 续接讨论；Foreman 的审查不支持续接。均不支持视觉审查或写入。ZCode 只看说明、准备好的 diff 和 `--file` 文本，完整提示上限 96,000 UTF-8 字节。
+
 **`type: "api"`**（兼容 OpenAI 接口的模型）
 
 | 字段 | 作用 |

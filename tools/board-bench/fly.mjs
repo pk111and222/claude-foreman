@@ -1,5 +1,5 @@
 // 量网页看板从宇宙飞进一个对话时的帧：node fly.mjs <root> | --url <看板地址> [--session long] [--runs 3] [--no-shared] [--headed] [--profile] [--browser <路径>] [--check]
-//   [--size 1920,1080]（窗口大小，默认 1440,900） [--query look=old]（附加到看板地址的参数）
+//   [--size 1920,1080]（窗口大小，默认 1440,900） [--dpr 2]（模拟高分屏） [--query look=old]（附加到看板地址的参数）
 // <root> 是 long.mjs 生成的目录（只认系统临时目录里的）。起一个直播看板服务（锁文件写在 <root>/runs 里，不碰真实记录），
 // 每一次都新开浏览器（临时用户目录，冷启动），等宇宙载入后飞进 --session，记飞入 1.6 秒和落地后 2 秒的帧间隔，
 // 以及长动画帧（>50 ms）里排前面的脚本。--no-shared 去掉 SharedWorker，走页面直连流（Claude 桌面版内置浏览器就是这样）；
@@ -74,6 +74,10 @@ async function once() {
     await send('Target.activateTarget', { targetId });
     if (has('no-shared')) await send('Page.addScriptToEvaluateOnNewDocument', { source: 'delete window.SharedWorker;' }, sid);
     await send('Page.enable', {}, sid);
+    if (opt('dpr')) {
+      const [width, height] = opt('size', '1440,900').split(',').map(Number);
+      await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: Number(opt('dpr')), mobile: false }, sid);
+    }
     await send('Page.navigate', { url }, sid);
     let ready = false;
     for (let i = 0; i < 120 && !ready; i++) { await sleep(250); ready = await evaluate(sid, `typeof U !== 'undefined' && U.sessions.has(${JSON.stringify(session)}) && FLY.mode === 'universe'`); }
