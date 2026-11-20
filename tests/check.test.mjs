@@ -99,6 +99,29 @@ for (const loggedIn of [true, false]) {
   });
 }
 
+test('check distinguishes a configured Codex provider from an OpenAI login', async (t) => {
+  const h = sandbox(t), s = h.scenario({ logged_in: false });
+  const provider = (requiresAuth) => `model_provider = "relay"
+[model_providers.relay] # provider settings
+base_url = "http://127.0.0.1:1/v1"
+requires_openai_auth = ${requiresAuth}
+`;
+  h.write('../.codex/config.toml', provider(false));
+  const r = output(await h.bridge(['check'], { env: s.env }));
+  assert.equal(r.agents.codex.ok, true);
+  assert.equal(r.agents.codex.fix, null);
+  assert.equal(r.agents.codex.auth_note, M.codexExternalAuth);
+  const md = await h.bridge(['check', '--format', 'md'], { env: s.env });
+  assert.ok(md.stdout.includes(M.codexExternalAuth));
+  const c = output(await h.bridge(['config'], { env: s.env }));
+  assert.deepEqual(c.environment.codex, { found: true, logged_in: false, external_provider: true });
+  assert.ok(s.calls().every((c) => !['exec', 'review'].includes(c.args[0])), 'setup must not test model connectivity');
+  h.write('../.codex/config.toml', provider(true));
+  const loginRequired = output(await h.bridge(['check'], { env: s.env }), 1);
+  assert.equal(loginRequired.agents.codex.fix, M.fixCodexLogin);
+  assert.equal(loginRequired.agents.codex.auth_note, undefined);
+});
+
 test('check 找不到指定 Codex 时提示安装且不调用真实 CLI', async (t) => {
   const h = sandbox(t), c = baseConfig();
   c.agents.codex.bin = path.join(h.home, 'missing-codex.exe');

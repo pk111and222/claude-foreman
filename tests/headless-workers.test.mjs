@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test } from 'node:test';
 import { pathToFileURL } from 'node:url';
-import { sandbox, baseConfig, ROOT, write, plannedArgs, taskArgs, poll } from './helpers.mjs';
+import { sandbox, baseConfig, ROOT, write, plannedArgs, taskArgs, poll, MESSAGES } from './helpers.mjs';
 
 const fixture = pathToFileURL(path.join(ROOT, 'tests', 'fake', 'headless.mjs')).href;
 const setup = (t, name) => {
@@ -87,6 +87,18 @@ for (const tool of ['dsh', 'zcode']) {
     for (const pid of ids) await poll(() => { try { process.kill(pid, 0); return false; } catch (err) { return err.code === 'ESRCH'; } }, 'worker child exited');
   });
 }
+
+test('an unavailable zcode executable is not treated as a model catalogue failure', async (t) => {
+  const h = sandbox(t), cfg = baseConfig();
+  cfg.agents.zcode = { type: 'zcode cli', bin: path.join(h.home, 'nonexistent-zcode') };
+  h.config(cfg);
+  const catalog = ok(await h.bridge(['models']));
+  assert.equal(catalog.tools['zcode cli'].error_code, 'ENOENT');
+  const listing = await h.bridge(['models', '--format', 'md']);
+  assert.ok(listing.stdout.includes(MESSAGES.zh.zcodeCliMissing));
+  const probe = json(await h.bridge(['check', '--agent', 'zcode']));
+  assert.equal(probe.agents.zcode.fix, MESSAGES.zh.zcodeCliMissing);
+});
 
 test('DSH rejects model overrides and write access', async (t) => {
   const h = setup(t, 'dsh');

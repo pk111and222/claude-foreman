@@ -629,6 +629,7 @@ function detectEnvironment(adapters, agents = {}) {
   };
   const version = call('codex cli', ['--version']), found = !version.error && version.status === 0;
   const login = found ? call('codex cli', ['login', 'status']) : null;
+  const externalProvider = found && adapters['codex cli'].configuredExternalProvider();
   const oc = call('opencode cli', ['--version']), ocFound = !oc.error && oc.status === 0;
   const models = ocFound ? call('opencode cli', ['models']) : null;
   const pi = call('pi cli', ['--version']), piFound = !pi.error && pi.status === 0;
@@ -639,7 +640,8 @@ function detectEnvironment(adapters, agents = {}) {
   const cbHelp = cbFound ? call('codebuddy cli', adapters['codebuddy cli'].listModelsArgs) : null;
   // codebuddy 把可用模型写在 --help 的 "Currently supported: (...)" 里，用逗号隔开。
   const cbList = cbHelp?.status === 0 ? /Currently supported:\s*\(([^)]+)\)/i.exec(cbHelp.stdout || '')?.[1] : null;
-  return { codex: { found, logged_in: !!login && !login.error && login.status === 0 && /logged in/i.test(`${login.stdout}${login.stderr}`) && !/not logged in/i.test(`${login.stdout}${login.stderr}`) },
+  return { codex: { found, logged_in: !!login && !login.error && login.status === 0 && /logged in/i.test(`${login.stdout}${login.stderr}`) && !/not logged in/i.test(`${login.stdout}${login.stderr}`),
+    ...(externalProvider ? { external_provider: true } : {}) },
     opencode: { found: ocFound, models: models?.status === 0 ? new Set(models.stdout.split(/\s+/).filter((s) => s.includes('/'))).size : 0 },
     // pi --list-models 输出一张表：第一行是表头，之后每行一个模型。
     // 一个模型都没有（还没登录）时只打印一句提示和几行文档路径，不是表
@@ -660,7 +662,7 @@ const API_STARTERS = [
 ];
 function buildStarterConfig(environment) {
   const cfg = structuredClone(DEFAULT_CONFIG);
-  if (environment.codex.found && environment.codex.logged_in) {
+  if (environment.codex.found && environment.codex.logged_in && !environment.codex.external_provider) {
     for (const model of ['gpt-6.1-sol', 'gpt-6-astra']) cfg.agents[model] = { type: 'codex cli', model };
     cfg.modules.run.complex = [{ agent: 'gpt-6.1-sol', effort: 'max' }];
     for (const [i, lv] of LEVELS.entries()) {
@@ -689,7 +691,8 @@ function loadConfig(cwd, adapters) {
       const environment = detectEnvironment(adapters), starter = buildStarterConfig(environment);
       fs.mkdirSync(path.dirname(USER_CONFIG), { recursive: true });
       fs.writeFileSync(USER_CONFIG, formatConfigText(starter), { flag: 'wx' });
-      let parts = environment.codex.logged_in ? M.starterCodex('gpt-6.1-sol', 'gpt-6-astra') : M.starterNoCodex;
+      let parts = environment.codex.external_provider ? M.starterCodexExternal
+        : environment.codex.logged_in ? M.starterCodex('gpt-6.1-sol', 'gpt-6-astra') : M.starterNoCodex;
       if (environment.opencode.models) parts += M.starterOpencode(environment.opencode.models);
       if (environment.pi.models) parts += M.starterPi(environment.pi.models);
       if (environment.codebuddy?.models) parts += M.starterCodebuddy(environment.codebuddy.models);

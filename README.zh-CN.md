@@ -65,7 +65,7 @@ claude --plugin-dir "$PWD/foreman"  # 英文版用 "$PWD/foreman-en"
 - Node.js 18 或更高版本。在 WSL 里运行 Claude Code 时，WSL 里也要装 Node.js，否则插件的钩子会在每条命令前报错
 - Git 2.25 或更高版本，用来追踪协作方改了哪些文件
 - 协作方，有几个配几个（一个都没有也能装，那样所有工作由 Claude Code 自己做）：
-  - [Codex CLI](https://github.com/openai/codex)，已安装并登录。推荐，生成图片只能交给它
+  - [Codex CLI](https://github.com/openai/codex)，已安装，并通过 Codex 登录或配置了可用的自定义 provider。`codex login status` 不检查自定义接口。推荐，生成图片只能交给它
   - [opencode](https://opencode.ai) 2.x 或 [pi](https://github.com/earendil-works/pi)，用来接入各家模型
   - Agy CLI（Google Antigravity CLI），已安装并登录，能参加讨论和审查（目前只验证了 Windows 11）
   - 兼容 OpenAI 接口的模型 API key（比如 DeepSeek、Kimi、MiMo），能参加讨论和审查（只审文本，不看截图）
@@ -391,7 +391,7 @@ Claude Code 每次进入讨论、执行或审查时，都按这一类的标准�
 
 ### 接入 DSH 和 ZCode
 
-在 `agents` 里加 `"dsh": { "type": "dsh cli" }` 或 `"zcode": { "type": "zcode cli" }`，然后把代号加到目标 `modules.<场景>.discuss` 和 `review` 格子。不写 `model`、`effort` 或 `run_access`。DSH 使用官方 `dsh headless`，不走 `dsh-tui`；ZCode 在 macOS 上通过个人 provider 配置接入。详见[配置和版本要求](foreman/skills/dispatch/references/config.md)。先跑 `check --agent dsh` / `check --agent zcode`；讨论可以续接，审查按 Foreman 原有规则不续接。参见[实测说明](docs/headless-worker-verification.md)。
+在 `agents` 里加 `"dsh": { "type": "dsh cli" }` 或 `"zcode": { "type": "zcode cli" }`，然后把代号加到目标 `modules.<场景>.discuss` 和 `review` 格子。不写 `model`、`effort` 或 `run_access`。DSH 使用官方 `dsh headless`，不走 `dsh-tui`；ZCode 需要能在 macOS 上启动的独立 Agent CLI（`zcode --version`）；仅安装桌面版不够。为 Foreman 单独指定可用的个人 provider 和默认模型，桌面登录态不会自动传给 worker。详见[配置和版本要求](foreman/skills/dispatch/references/config.md)。先跑 `check --agent dsh` / `check --agent zcode`；讨论可以续接，审查按 Foreman 原有规则不续接。参见[实测说明](docs/headless-worker-verification.md)。
 
 ### 接入 agy
 

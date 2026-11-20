@@ -28,16 +28,26 @@ function codexCommand(agent) {
   return binCommand(npmEntry('@openai', 'codex', 'bin', 'codex.js') || 'codex.exe');
 }
 
-// 读 Codex 的 config.toml 里的一个字符串值：不给表名时只看第一个 [表] 之前的顶层键。读不到返回 null。
-function codexConfigValue(key, table = null) {
-  const file = path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'config.toml');
+const codexConfigFile = () => path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'config.toml');
+
+// 读 config.toml 中常用的单行键和普通表。诊断看不懂的写法不推断认证方式。
+function codexConfigValue(key, table = null, { bare = false } = {}) {
   let text;
-  try { text = fs.readFileSync(file, 'utf8'); } catch { return null; }
-  const part = table == null ? text.split(/^\s*\[/m)[0] : (text.split(new RegExp(`^\\s*\\[${table}\\]\\s*$`, 'm'))[1] || '').split(/^\s*\[/m)[0];
-  return new RegExp(`^\\s*${key}\\s*=\\s*["']([^"']+)["']`, 'm').exec(part)?.[1] || null;
+  try { text = fs.readFileSync(codexConfigFile(), 'utf8'); } catch { return null; }
+  const header = table?.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const part = header == null ? text.split(/^\s*\[/m)[0]
+    : (text.split(new RegExp(`^[ \\t]*\\[${header}\\][ \\t]*(?:#.*)?$`, 'm'))[1] || '').split(/^\s*\[/m)[0];
+  const value = bare ? '(true|false)' : `['"]([^'"\\r\\n]+)['"]`;
+  return new RegExp(`^[ \\t]*${key}[ \\t]*=[ \\t]*${value}[ \\t]*(?:#.*)?$`, 'm').exec(part)?.[1] || null;
 }
 
-const codexConfigFile = () => path.join(process.env.CODEX_HOME || path.join(os.homedir(), '.codex'), 'config.toml');
+// login status 看的是 OpenAI 登录，不会验证自定义接口。这里只识别明确不依赖 OpenAI 登录的配置，不请求模型。
+function configuredExternalProvider() {
+  const provider = codexConfigValue('model_provider');
+  if (!provider || !/^[\w-]+$/.test(provider) || provider === 'openai') return false;
+  const table = `model_providers.${provider}`;
+  return !!codexConfigValue('base_url', table) && codexConfigValue('requires_openai_auth', table, { bare: true }) === 'false';
+}
 
 // 续接的 -c 会覆盖整个数组，先读出用户配的可写目录；不解析 profile。
 // 没配这一项返回空数组；配了但读不懂返回 null，调用方这时不能再用 -c 覆盖它。
@@ -445,10 +455,12 @@ function checkCodex(name, agent, efforts = [], catalog = () => codexCatalog(agen
   const login = installed ? codex(['login', 'status']) : null;
   const loginText = login ? `${login.stdout}${login.stderr}`.trim() : null;
   const loggedIn = !!login && login.status === 0 && !/not logged in/i.test(loginText);
+  const externalProvider = installed && configuredExternalProvider();
   const out = {
-    ok: installed && loggedIn, version: installed ? version.stdout.trim() : null, login: loginText,
+    ok: installed && (loggedIn || externalProvider), version: installed ? version.stdout.trim() : null, login: loginText,
     model: agent.model || codexConfigModel(),
-    fix: !installed ? M.fixCodexMissing : loggedIn ? null : M.fixCodexLogin,
+    ...(externalProvider ? { auth_note: M.codexExternalAuth } : {}),
+    fix: !installed ? M.fixCodexMissing : (loggedIn || externalProvider) ? null : M.fixCodexLogin,
   };
   if (!out.ok) return out;
   const { unsupported, ...checked } = codexEfforts(name, agent, efforts.map((e) => ({ ...e, model: e.model || out.model })), catalog);
@@ -538,7 +550,7 @@ export default {
   execute: executeCodex,
   validateResume: (parent) => { if (!parent.meta.session_id) die(M.noSession(parent.id)); },
   lostPrompt: codexLostPrompt,
-  locate: codexCommand,
+  locate: codexCommand, configuredExternalProvider,
   stats: codexSessionStats,
 };
 

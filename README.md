@@ -65,7 +65,7 @@ Then run `/foreman-en:setup` or `/foreman:setup` for the version you loaded. Pac
 - Node.js 18 or later. If you run Claude Code inside WSL, Node.js must be installed inside WSL too, or the plugin's hooks will error before every command
 - Git 2.25 or later, used to track which files the agents changed
 - Agents, as many as you like (with none, the plugin still installs and Claude Code does all the work itself):
-  - The [Codex CLI](https://github.com/openai/codex), installed and signed in. Recommended; image generation can only go to Codex
+  - The [Codex CLI](https://github.com/openai/codex), installed and either signed in or configured with a working custom provider. `codex login status` does not test custom providers. Recommended; image generation can only go to Codex
   - [opencode](https://opencode.ai) 2.x or [pi](https://github.com/earendil-works/pi), to reach models from many providers
   - Agy CLI (Google Antigravity CLI), installed and signed in, for discussions and reviews (only Windows 11 verified so far)
   - API keys for models with an OpenAI-compatible API (such as DeepSeek, Kimi or MiMo); these can join discussions and reviews (text only, no screenshots)
@@ -391,7 +391,7 @@ With the CodeBuddy CLI installed (`npm install -g @tencent-ai/codebuddy-code`, c
 
 ### Adding DSH and ZCode
 
-Add `"dsh": { "type": "dsh cli" }` or `"zcode": { "type": "zcode cli" }` to `agents`, then add their IDs to the desired `modules.<scene>.discuss` and `review` cells. Do not set `model`, `effort` or `run_access`. Use the official `dsh headless` (not `dsh-tui`). For ZCode, configure a personal provider file and run on macOS. See [configuration and version requirements](foreman-en/skills/dispatch/references/config.md) and run `check --agent dsh` / `check --agent zcode` before use. Discussions support resume; reviews follow Foreman's non-resumable review workflow. See the [verification notes](docs/headless-worker-verification.md).
+Add `"dsh": { "type": "dsh cli" }` or `"zcode": { "type": "zcode cli" }` to `agents`, then add their IDs to the desired `modules.<scene>.discuss` and `review` cells. Do not set `model`, `effort` or `run_access`. Use the official `dsh headless` (not `dsh-tui`). ZCode requires a runnable standalone Agent CLI on macOS (`zcode --version`); installing Desktop alone is not enough. Set a personal provider file with a working default model; Foreman does not inherit the Desktop sign-in. See [configuration and version requirements](foreman-en/skills/dispatch/references/config.md) and run `check --agent dsh` / `check --agent zcode` before use. Discussions support resume; reviews follow Foreman's non-resumable review workflow. See the [verification notes](docs/headless-worker-verification.md).
 
 ### Adding agy
 

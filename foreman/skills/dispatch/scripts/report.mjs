@@ -37,7 +37,7 @@ export const environmentReport = (checks, environment, agents) => {
   return report([
     M.reportEnvironmentTitle, issues.length ? issues.join('\n\n') : sandboxChecked ? M.reportEnvironmentOk : M.reportEnvironmentOkNoSandbox,
     table(M.reportEnvironmentHeaders, [
-      ['Codex', codex.found ? M.reportCodexInstalled(codex.logged_in) : M.reportNotInstalled],
+      ['Codex', !codex.found ? M.reportNotInstalled : codex.external_provider ? M.codexExternalAuth : M.reportCodexInstalled(codex.logged_in)],
       ['opencode', opencode.found ? M.reportModelsInstalled(opencode.models) : M.reportNotInstalled],
       ['pi', pi.found ? M.reportModelsInstalled(pi.models) : M.reportNotInstalled],
       ['agy', agy?.found ? [M.reportModelsInstalled(agy.models), ...agyStatus].join(' · ') : M.reportNotInstalled],
@@ -222,7 +222,10 @@ export const modelsReport = (catalog) => {
       ])));
   }
   for (const [type, cat] of Object.entries(catalog.tools).filter(([, entry]) => entry.cli_managed_model)) {
-    blocks.push(cat.ok ? `${type}: ${M.reportCliManagedModel(cat.version)}` : M.reportCatalogError(type, cat.error));
+    const status = cat.ok ? M.reportCliManagedModel(cat.version)
+      : cat.error_code === 'ENOENT' ? (type === 'zcode cli' ? M.zcodeCliMissing : M.reportCliExecutableMissing)
+        : M.reportCliProbeFailed(cat.error);
+    blocks.push(`${type}: ${status}`);
   }
   if (api.some(([, cat]) => cat.ok)) blocks.push(M.reportApiTitle, table(M.reportApiHeaders, apiRows.map(([name, model]) => [name, model.id, context(model.context), catalog.agents[name]?.configured_models.includes(model.id) ? name : ''])));
   if (omitted) blocks.push(M.reportNonChat(omitted));

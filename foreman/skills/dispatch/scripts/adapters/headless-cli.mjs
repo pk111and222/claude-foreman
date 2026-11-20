@@ -183,7 +183,9 @@ export function headlessAdapter(spec) {
   const versionOf = (agent) => {
     const { file, pre } = locate(agent);
     const r = spawnSync(file, [...pre, '--version'], { encoding: 'utf8', windowsHide: true, timeout: 10000 });
-    return { version: r.status === 0 ? r.stdout.trim() : null, error: r.error?.message || (r.status === 0 ? null : r.stderr?.trim() || `exit ${r.status}`) };
+    return { version: r.status === 0 ? r.stdout.trim() : null,
+      error: r.error?.message || (r.status === 0 ? null : r.stderr?.trim() || `exit ${r.status}`),
+      ...(r.error?.code ? { error_code: r.error.code } : {}) };
   };
   return {
     type, capabilities, locate, channel: spec.label, defaultMaxParallel: defaultMaxParallel(type), readonlyLevel: () => spec.isolation,
@@ -195,8 +197,8 @@ export function headlessAdapter(spec) {
     },
     status: (agent) => ({ bin: agent.bin || spec.name }),
     catalog(agent) {
-      const { version, error } = versionOf(agent);
-      return { ok: !!version, version, error, models: [], cli_managed_model: true };
+      const probe = versionOf(agent);
+      return { ...probe, ok: !!probe.version, models: [], cli_managed_model: true };
     },
     async check(name, agent, efforts, catalog, modes, cwd) {
       const started = Date.now();
@@ -208,7 +210,7 @@ export function headlessAdapter(spec) {
         out.ok = result.status === 'done' && /^OK[.!]?$/i.test(out.reply || '');
         if (!out.ok) out.error = result.errors.join('; ') || (result.status === 'done' ? M.headlessCheckReply(spec.label) : result.status);
       } catch (err) { out.error = err.message; }
-      if (!out.ok) out.fix = M.headlessCheckFix(spec.label);
+      if (!out.ok) out.fix = out.error_code === 'ENOENT' && spec.missingFix ? spec.missingFix : M.headlessCheckFix(spec.label);
       return { ...out, seconds: Number(((Date.now() - started) / 1000).toFixed(1)) };
     },
     validateResume(parent) { if (!parent.meta.session_id) die(M.noSession(parent.id)); },

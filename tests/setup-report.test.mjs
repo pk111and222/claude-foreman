@@ -235,7 +235,7 @@ test('环境故障逐项输出 fix，API 变量只显示名字，未使用 Codex
     agents: { codex: { type: 'codex cli', fix: 'unused sandbox', sandbox: { checked: [{ ok: false }] } } }, summary: { agents: { codex: { used_at: [] } } } };
   const env = { codex: { found: true, logged_in: false }, opencode: { found: false }, pi: { found: false }, api_keys: ['KIMI_API_KEY', 'MIMO_API_KEY'] };
   const r = await isolated(h, `import { environmentReport } from ${JSON.stringify(urlOf('report.mjs'))}; console.log(environmentReport(${JSON.stringify(checks)}, ${JSON.stringify(env)}, ${JSON.stringify(cfg.effective.agents)}));`);
-  has(r.stdout, ['❌ Node.js：node fix', '⚠ Git：git fix', '⚠ 实时查看：watch fix', '| Codex | 已安装，没登录 |', '| opencode | 没装 |', '检测到 KIMI_API_KEY、MIMO_API_KEY']); assert.equal(r.stdout.includes('unused sandbox'), false);
+  has(r.stdout, ['❌ Node.js：node fix', '⚠ Git：git fix', '⚠ 实时查看：watch fix', `| Codex | ${M.reportCodexInstalled(false)} |`, '| opencode | 没装 |', '检测到 KIMI_API_KEY、MIMO_API_KEY']); assert.equal(r.stdout.includes('unused sandbox'), false);
 });
 
 test('agy 环境表显示首个在用协作方的沙箱和各桶额度，中英报告都有修法', async (t) => {

@@ -44,6 +44,7 @@ When pasting script output, replace the script's own level 1 and 2 headings with
 
 2. **Read the model lists**: run `node "<script path>" models --format md` and paste it as ②. Run `models` once more without `--format` (JSON) and read `agents.<ID>` to see whether each configured model is in its list: `listed: false` means the model name is wrong or the model was retired, and `closest` has the nearest names; put these into ④.
    - If an opencode or pi model the user wants isn't in ②, the end of ② already says how to sign in; don't repeat it.
+   - If `environment.codex.external_provider` is `true`, do not require `codex login` or assume Codex’s built-in catalog is the custom provider’s model list. Configure only models the user has verified or confirmed.
    - pi doesn't report an unsupported level and quietly switches to another, so pick efforts only from the ones listed in ②.
    - For agy, the agent's `model` is the model family (such as `gemini-3.8-flash`) and the level goes in the cell's `effort`, picked only from the levels ② lists for that model; leave it out for models with none.
    - DSH and ZCode use their own configured default models. Leave `model` and `effort` unset, and offer them only for discussions and reviews; see the CLI prerequisites in `references/config.md`.

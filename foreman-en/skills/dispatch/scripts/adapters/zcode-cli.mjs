@@ -76,7 +76,7 @@ function prepare({ command: { file, pre }, cwd }) {
 }
 
 export default headlessAdapter({
-  name: 'zcode', label: 'ZCode CLI', readsCode: false, isolation: 'os', sandbox: 'read-only',
+  name: 'zcode', label: 'ZCode CLI', readsCode: false, isolation: 'os', sandbox: 'read-only', missingFix: M.zcodeCliMissing,
   prompt(ctx, files, schema) {
     const prompt = zcodePrompt(ctx, files, schema), bytes = Buffer.byteLength(prompt);
     if (bytes > ZCODE_PROMPT_BYTES) die(M.zcodePromptLarge(bytes, ZCODE_PROMPT_BYTES));

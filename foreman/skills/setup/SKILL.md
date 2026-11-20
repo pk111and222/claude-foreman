@@ -44,6 +44,7 @@ $ARGUMENTS
 
 2. **读模型清单**：运行 `node "<脚本路径>" models --format md`，贴成 ②。再运行一次不带 `--format` 的 `models`（JSON），从 `agents.<代号>` 读出配置里的模型在不在清单里：`listed` 为 `false` 说明模型名写错了或已经下线，`closest` 是最接近的写法，放进 ④。
    - 用户要的 opencode 或 pi 模型不在 ② 里：② 末尾已经写了怎么登录，不用再说。
+   - `environment.codex.external_provider` 为 `true` 时，不要要求 `codex login`，也不要把 Codex 的内置模型清单当成自定义接口的白名单；按用户已验证或确认支持的模型来配。
    - pi 遇到模型不支持的档位不报错，会悄悄换一档，所以推理强度只从 ② 里列出的档位里选。
    - agy 的协作方 `model` 写模型族（比如 `gemini-3.8-flash`），档位写在格子的 `effort` 里，只从 ② 里这个模型列出的档位里选；没有档位的不写。
    - DSH 和 ZCode 用各自 CLI 的默认模型，不填 `model` 和 `effort`，只放进讨论和审查格子。安装和配置条件见 `references/config.md`。
