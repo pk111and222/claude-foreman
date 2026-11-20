@@ -10,10 +10,10 @@ import { loadPrices } from '../prices.mjs';
 import { createUniverse, universeChanges, universeAt, desktopRoots, desktopSessions } from './universe.mjs';
 import { buildId, buildStamp } from './build-id.mjs';
 import { retryFile, removeLock } from './lock.mjs';
+import { BOARD_PROTOCOL, boardAddressValid } from './protocol.mjs';
+import { LANGUAGE } from '../util.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-// 页面语言跟插件走（scripts/language.json：中文插件 zh、英文插件 en），测试时可用 FOREMAN_LANG 覆盖，和 util.mjs 一样
-const LANG = process.env.FOREMAN_LANG || (() => { try { return JSON.parse(fs.readFileSync(path.join(here, '..', 'language.json'), 'utf8')).language; } catch { return 'zh'; } })();
 const keys = ['runs', 'port', 'idle-min', 'group', 'run', 'replay', 'speed', 'maxgap', 'transcript', 'session', 'claude-dir', 'lead', 'tail', 'prices', 'window-h', 'config'];
 const replayMode = process.argv.slice(2).some((arg) => arg === '--replay' || arg.startsWith('--replay='));
 let lockFile, owner, ownerRaw, server, runsRoot, build, stamp;
@@ -56,11 +56,17 @@ const alive = (pid) => {
 };
 function health(lock, timeout) {
   return new Promise((resolve) => {
-    if (!Number.isInteger(lock.port) || lock.port < 1 || lock.port > 65535 || !/^[a-f0-9]{32}$/.test(lock.token)) return resolve('wait');
+    if (!boardAddressValid(lock)) return resolve('wait');
     const req = http.get({ hostname: '127.0.0.1', port: lock.port, path: `/${lock.token}/health` }, (res) => {
       let body = '';
       res.setEncoding('utf8'); res.on('data', (s) => { body += s; });
-      res.on('end', () => { try { const value = JSON.parse(body); finish(res.statusCode === 200 && value.ok === true && value.v === 1 && value.pid === lock.pid ? 'ok' : 'wait'); } catch { finish('wait'); } });
+      res.on('end', () => {
+        try {
+          const value = JSON.parse(body);
+          if (res.statusCode !== 200 || value?.ok !== true || value.pid !== lock.pid) return finish('wait');
+          finish(value.v === BOARD_PROTOCOL ? 'ok' : 'incompatible');
+        } catch { finish('wait'); }
+      });
       res.on('error', () => finish('wait'));
     });
     const timer = setTimeout(() => { req.destroy(); finish('wait'); }, timeout);
@@ -75,7 +81,7 @@ async function claim() {
     try { fd = retryFile(() => fs.openSync(lockFile, 'wx', 0o600)); }
     catch (e) { if (e.code !== 'EEXIST') throw e; }
     if (fd !== undefined) {
-      owner = { v: 1, pid: process.pid, port: 0, token: randomBytes(16).toString('hex'), started_at: new Date().toISOString(), build };
+      owner = { v: BOARD_PROTOCOL, pid: process.pid, port: 0, token: randomBytes(16).toString('hex'), started_at: new Date().toISOString(), build };
       ownerRaw = JSON.stringify(owner);
       process.once('exit', cleanup);
       try { fs.writeFileSync(fd, ownerRaw); } finally { fs.closeSync(fd); }
@@ -92,6 +98,7 @@ async function claim() {
       // 超时可能只是同步读取阻塞；只有拒绝连接才立即回收活 pid 的锁。
       const state = await health(existing.value, Math.max(1, Math.min(1000, deadline - Date.now())));
       if (state === 'ok') return existing.value;
+      if (state === 'incompatible') throw new Error('an incompatible board server already owns the runs directory; stop it with its original launcher first');
       if (state === 'refused' || Date.now() >= deadline) removeLock(lockFile, existing.raw);
     }
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -358,7 +365,7 @@ async function main() {
         let html;
         try { html = fs.readFileSync(path.join(here, 'index.html'), 'utf8'); }
         catch (e) { if (e.code !== 'ENOENT') throw e; html = '<!doctype html><title>Foreman board</title><p>Board page is not built yet.</p>'; }
-        const requested = url.searchParams.get('lang'), lang = ['zh', 'en'].includes(requested) ? requested : LANG;
+        const requested = url.searchParams.get('lang'), lang = ['zh', 'en'].includes(requested) ? requested : LANGUAGE;
         html = html.replace(/<html lang="(?:zh-CN|en)">/, `<html lang="${lang === 'en' ? 'en' : 'zh-CN'}">`)
           .replace(/window\.__LANG__ = '(?:zh|en)';/, `window.__LANG__ = '${lang === 'en' ? 'en' : 'zh'}';`)
           .replace("window.__BOARD_MODE__ = 'live';", `window.__BOARD_MODE__ = '${replayMode ? 'replay' : 'live'}';`);
@@ -409,7 +416,7 @@ async function main() {
         }
         return end(200, 'application/json', JSON.stringify({ ok: true }));
       }
-      // board --stop 和换版本时请服务自己退出：凭路径里已经核对过的令牌，不按 pid 结束进程，免得误杀复用了同一个 pid 的程序
+      // board --stop 请服务自己退出：凭路径里已经核对过的令牌，避免误杀复用了同一个 pid 的程序
       if (route === 'shutdown') {
         res.once('finish', () => process.exit(0));
         return end(200, 'application/json', JSON.stringify({ ok: true, pid: process.pid }));
@@ -424,7 +431,7 @@ async function main() {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
         }
         // 回放末尾可能已有对话退出时间窗口，命令计数按启动时冻结的完整范围。
-        return end(200, 'application/json', JSON.stringify({ ok: true, v: 1, pid: process.pid, build, ...(replayMode ? { sessions: details.size } : {}) }));
+        return end(200, 'application/json', JSON.stringify({ ok: true, v: BOARD_PROTOCOL, pid: process.pid, build, ...(replayMode ? { sessions: details.size } : {}) }));
       }
       // 出图任务的缩略图：只收任务 id 和序号，图片路径取自这个任务自己的记录（imagesOf），只给图片文件
       if (route === 'image') {
@@ -478,7 +485,7 @@ async function main() {
   await new Promise((resolve, reject) => { server.once('error', reject); server.listen(replayMode ? 0 : port, '127.0.0.1', resolve); });
   owner.port = server.address().port;
   if (replayMode) {
-    const q = new URLSearchParams({ level: 'all', replay: 'all', lang: LANG });
+    const q = new URLSearchParams({ level: 'all', replay: 'all', lang: LANGUAGE });
     if (sessions?.length === 1) q.set('s', sessions[0]);
     for (const key of ['speed', 'maxgap']) if (values[key] != null) q.set(key, values[key]);
     process.stdout.write(JSON.stringify({ url: `http://127.0.0.1:${owner.port}/${owner.token}/?${q}` }) + '\n');

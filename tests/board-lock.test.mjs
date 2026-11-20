@@ -149,25 +149,47 @@ test('畸形请求返回 400 且服务仍可响应 health', (t) => withBoard(t, 
   assert.equal((await fetch(new URL('health', url))).status, 200);
 }));
 
-test('build 不同的旧服务被结束并替换，链接随之改变', (t) => withBoard(t, async (h, children, lockFile) => {
+test('构建不同但协议相同的旧服务会复用；主动关停时兼容旧版不支持 shutdown', (t) => withBoard(t, async (h, children, lockFile) => {
   const oldDir = path.join(h.home, 'old-scripts/board');
-  // 保留旧服务的实际依赖树，避免共用显示模块新增后只复制入口导致启动失败。
   fs.cpSync(path.dirname(boardDir), path.dirname(oldDir), { recursive: true });
   write(path.join(oldDir, 'index.html'), '<html lang="zh-CN">old</html>');
-  // 旧版服务没有 shutdown 接口（POST 回 405）：board 退回按 pid 结束它
   const serverFile = path.join(oldDir, 'server.mjs');
   fs.writeFileSync(serverFile, fs.readFileSync(serverFile, 'utf8').replaceAll("route === 'shutdown'", "route === 'no-shutdown'"));
-  const old = startServer(h, children, {}, path.join(oldDir, 'server.mjs'));
+  const old = startServer(h, children, {}, serverFile);
   await ready(old);
   const previous = json(lockFile);
   assert.notEqual(previous.build, buildId(boardDir));
   const result = output(await h.bridge(['board']));
+  assert.equal(result.started, false);
+  assert.equal(new URL(result.url).pathname, `/${previous.token}/`);
+  assert.deepEqual(json(lockFile), previous);
+  assert.deepEqual(output(await h.bridge(['board', '--stop'])), { stopped: true, pid: previous.pid });
   await old.done;
-  assert.equal(result.started, true);
-  assert.ok(old.child.exitCode !== null || old.child.signalCode !== null);
-  assert.notEqual(new URL(result.url).pathname, `/${previous.token}/`);
-  assert.notEqual(json(lockFile).pid, previous.pid);
-  assert.equal(json(lockFile).build, buildId(boardDir));
+  assert.equal(fs.existsSync(lockFile), false);
+}));
+
+test('已验证但协议不同的服务不会被插件、独立 CLI 或服务端认领逻辑停止或接管', (t) => withBoard(t, async (h, children, lockFile) => {
+  const version = 99, token = 'a'.repeat(32), visits = [];
+  const server = http.createServer((req, res) => {
+    visits.push(`${req.method} ${req.url}`);
+    res.end(JSON.stringify({ ok: true, v: version, pid: process.pid }));
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const lock = { v: version, pid: process.pid, port: server.address().port, token };
+  write(lockFile, lock);
+  try {
+    const standalone = path.join(ROOT, 'bin/foreman.mjs');
+    for (const args of [['board'], ['board', '--stop']]) {
+      failed(await h.bridge(args), MESSAGES.zh.boardIncompatible(version));
+      failed(await h.start(standalone, args).done, MESSAGES.zh.boardIncompatible(version));
+    }
+    const direct = await startServer(h, children).done;
+    assert.equal(direct.code, 1);
+    assert.match(direct.stderr, /incompatible board server/);
+    assert.deepEqual(json(lockFile), lock);
+    assert.equal(visits.length, 5);
+    assert.ok(visits.every((visit) => visit === `GET /${token}/health`));
+  } finally { await new Promise((resolve) => server.close(resolve)); }
 }));
 
 test('启动错误写入 board.err 并快速报告，成功重启后删除错误文件', (t) => withBoard(t, async (h) => {
@@ -284,7 +306,7 @@ test('board 启动的服务把工作目录放在记录目录，不占着插件�
     import path from 'node:path';
     if (path.basename(process.argv[1]) === 'server.mjs') fs.writeFileSync(${JSON.stringify(out)}, process.cwd());`);
   assert.equal(output(await h.bridge(['board'], { env: { NODE_OPTIONS: `--import=${pathToFileURL(preload).href}` } })).started, true);
-  assert.equal(path.resolve(read(out)), path.resolve(h.runs));
+  assert.equal(fs.realpathSync(read(out)), fs.realpathSync(h.runs));
 }));
 
 test('shutdown 只收带令牌的 POST，服务回应后自己退出并删掉锁', (t) => withBoard(t, async (h, children, lockFile) => {
@@ -309,7 +331,7 @@ test('启动途中插件文件被换掉（算 buildId 时），第一次自查�
   // 第一次读页面算 buildId 时，磁盘上的页面已经换成新的，读到的还是旧内容
   const preload = write(path.join(h.home, 'swap-board.mjs'), `
     import fs from 'node:fs';
-    const page = ${JSON.stringify(page)}, read = fs.readFileSync;
+    const page = ${JSON.stringify(fs.realpathSync(page))}, read = fs.readFileSync;
     let swapped = false;
     fs.readFileSync = (file, ...rest) => {
       if (!swapped && file === page) { swapped = true; const old = read(file, ...rest); fs.writeFileSync(page, '<html lang="zh-CN">new</html>'); return old; }

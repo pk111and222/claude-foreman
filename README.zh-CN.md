@@ -232,6 +232,23 @@ flowchart TD
 
 ### 网页看板
 
+#### 从终端独立打开
+
+需要 Node.js 18 或更新版本。不用启动 Claude Code，也不用安装 Claude 插件。直接安装 [GitHub Releases](https://github.com/pk111and222/claude-foreman/releases/tag/foreman-cli-v0.1.0) 上的发行包：
+
+```sh
+npm install -g https://github.com/pk111and222/claude-foreman/releases/download/foreman-cli-v0.1.0/pk111and222-foreman-cli-0.1.0.tgz
+foreman board
+```
+
+- `foreman board` 打开默认浏览器，进入全局看板；可加 `--session <对话 ID>` 直达某个对话。没有本机记录时显示空看板。
+- `foreman board --url` 只打印链接；`foreman board --json` 只输出 JSON。两种方式都不打开浏览器。
+- `foreman board --replay <对话 ID、任务 ID、组名或 all>` 用独立进程回放历史，不打断直播；`foreman board --stop` 只关闭直播服务，不停止任务或回放。
+
+独立命令与插件共用用户配置和任务记录（默认 `~/.claude/foreman/runs`；可用 `dispatch.runs_dir` 或 `FOREMAN_RUNS_DIR` 指定目录）。同一目录复用一个兼容的直播服务，只在本机监听。手动打开不受 `dispatch.watch.web` 或 `dispatch.watch.web_open` 影响，也不会修改它们。独立命令只查看已有记录，派工仍由插件负责。同时使用两个入口时，建议升级 Claude 插件到包含这次拆分的版本；旧版插件遇到不同构建仍可能重启看板。
+
+#### 从 Claude Code 打开
+
 终端实时查看之外的另一个入口，默认关闭：在配置里把 `dispatch.watch.web` 设成 `true`，或者运行 `/foreman:setup`（按本机内存决定开不开）。开着时派出任务只给看板链接，不再自动打开终端实时查看；想在终端里看时用 `/foreman:watch`。派出任务后，Claude Code 会在告诉你"已派出"的那句话里附上看板链接（每次派出都附，一起派出的几个任务附一次）；还有任务在跑时，它每一轮回复的最后一行都是看板链接，最后的汇报里也有。插件的钩子在派出命令运行前也会显示这个链接，桌面版里它折在工具调用里面；这一轮里这个对话启动过任务（派出命令一运行就给这个对话留一个标记，命令怎么写都算）、Claude Code 的回复正文里却没有看板链接时，钩子会在这一轮结束前拦一次，让它补上那句话。想让看板自己弹出来，把 `dispatch.watch.web_open` 设成 `true`：每个对话第一次派出时，在默认浏览器里自动打开一次。
 
 - **怎么打开**：开着时，每次派活都先在对话里给一个链接，再启动任务；`/foreman:watch` 也会给。点开会在你的默认浏览器里打开：先看到星图，随后自动飞进这个对话的看板（刷新页面时直接回到看板）；不会在 Claude 应用里打开。

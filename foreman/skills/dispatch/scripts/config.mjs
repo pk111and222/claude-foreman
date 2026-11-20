@@ -40,7 +40,7 @@ const PROJECT_CONFIG = path.join('.claude', 'foreman.json');
 const PROJECT_PREFS = path.join('.claude', 'foreman.md');
 
 // 改名迁移：第一次运行时把旧配置和旧偏好复制到新位置，旧文件保留。用户用环境变量指定了配置路径时不动。
-function migrateLegacyFiles() {
+export function migrateLegacyFiles() {
   if (CUSTOM_CONFIG) return;
   for (const [from, to, msg] of [[LEGACY_CONFIG, USER_CONFIG, M.legacyConfigCopied], [LEGACY_PREFS, USER_PREFS, M.legacyPrefsCopied]]) {
     if (fs.existsSync(to) || !fs.existsSync(from)) continue;
@@ -51,7 +51,20 @@ function migrateLegacyFiles() {
     } catch (e) { if (e.code !== 'EEXIST') notice(M.legacyCopyFailed(from, e.message)); } // 并发启动时别的进程先复制了
   }
 }
-migrateLegacyFiles();
+
+const runsDirOverride = () => envOf('FOREMAN_RUNS_DIR', 'CODEX_RUNS_DIR');
+const DEFAULT_RUNS = path.join(HOME_DIR, 'runs');
+
+// 独立看板只解析记录和配置的位置，不创建配置、不探测协作方，也不搬动旧记录。
+export function readBoardPaths() {
+  const configFile = path.resolve(!CUSTOM_CONFIG && !fs.existsSync(USER_CONFIG) && fs.existsSync(LEGACY_CONFIG) ? LEGACY_CONFIG : USER_CONFIG);
+  const raw = readJson(configFile);
+  const configured = runsDirOverride() || (Object.hasOwn(raw?.dispatch ?? {}, 'runs_dir') ? raw.dispatch.runs_dir : raw?.runs_dir);
+  if (configured != null && (typeof configured !== 'string' || !configured.trim())) die(M.boardRunsDirInvalid);
+  const runsRoot = configured ? path.resolve(configured)
+    : fs.existsSync(DEFAULT_RUNS) || !fs.existsSync(LEGACY_RUNS) ? DEFAULT_RUNS : LEGACY_RUNS;
+  return { configFile, runsRoot };
+}
 
 // 项目里的文件还是旧名字时照常读取，提示改名，不改动项目里的文件。
 function projectFile(cwd, current, legacy) {
@@ -684,6 +697,7 @@ function buildStarterConfig(environment) {
 }
 
 function loadConfig(cwd, adapters) {
+  migrateLegacyFiles();
   const sources = [];
   let cfg = DEFAULT_CONFIG;
   if (!fs.existsSync(USER_CONFIG)) {
@@ -736,7 +750,7 @@ function loadConfig(cwd, adapters) {
       sources.push(file);
     }
   }
-  const runsDir = envOf('FOREMAN_RUNS_DIR', 'CODEX_RUNS_DIR');
+  const runsDir = runsDirOverride();
   if (runsDir) cfg = mergeConfig(cfg, { dispatch: { runs_dir: runsDir } });
   if (!cfg.scene_modules) cfg = mergeScenes(cfg, {}, adapters);
   const configured = [...new Set([...Object.keys(cfg.scene_modules).filter((scene) => scene !== 'default'), ...scenes.inactive])];
@@ -763,7 +777,7 @@ function loadConfig(cwd, adapters) {
 // 几个进程可能同时启动（比如同时发起讨论），用锁保证只搬一次；旧目录里还有任务在跑就先不搬，这次继续用旧目录。
 let runsMovedNow = false;
 function defaultRunsRoot() {
-  const target = path.join(HOME_DIR, 'runs');
+  const target = DEFAULT_RUNS;
   if (fs.existsSync(target) || !fs.existsSync(LEGACY_RUNS)) return target;
   const lock = path.join(HOME_DIR, '.migrate.lock');
   // 锁文件的操作同样都经过 retryBusy（见 migrateStructure）：删残留锁时每次重试前确认持有者没换过，删自己的锁时确认还是自己的。

@@ -557,6 +557,15 @@ ${schema}`,
   fixNode: (v) => `Node.js ${v} 太旧，需要 18 或更高版本：https://nodejs.org`,
   fixWebLowMemory: '本机内存偏低（总内存不到 8 GB 或可用不到 2 GB）。网页看板运行时服务约占 100–130 MB、浏览器标签页约 60–90 MB，建议在配置文件里把 dispatch.watch.web 设成 false。',
   boardOff: '网页看板没有开启：在配置文件里把 dispatch.watch.web 设成 true，或者运行 /foreman:setup 打开。',
+  boardCliUsage: `用法：foreman board [--session <对话 ID>] [--url | --json]
+      foreman board --replay <对话 ID、任务 ID、组名或 all> [--speed <倍数>] [--maxgap <秒>] [--url | --json]
+      foreman board --stop [--json]
+
+默认打开浏览器；--url 只输出链接，--json 只输出 JSON。--stop 只关闭直播看板，不会停止任务。`,
+  boardRunsDirInvalid: '配置里的 dispatch.runs_dir 必须是路径字符串或 null',
+  boardBrowserFailed: (reason) => `没能自动打开浏览器，请复制上方链接手动打开：${reason}`,
+  boardStopped: '已关闭直播看板，正在运行的任务不受影响',
+  boardIncompatible: (version) => `正在运行的看板协议不兼容（版本 ${Number.isInteger(version) ? version : '未知'}）。请先用原启动入口关闭它，再重新打开；本次没有停止该服务。`,
   boardStartFailed: (reason) => `网页看板启动失败：${reason}`,
   boardNotRunning: '看板服务没在运行',
   boardStopUnverified: (pid) => `看板服务（pid ${pid}）没有回应，确认不了是不是它，没有动这个进程`,
@@ -1474,6 +1483,15 @@ ${schema}`,
   fixNode: (v) => `Node.js ${v} is too old; version 18 or later is needed: https://nodejs.org`,
   fixWebLowMemory: "This computer is low on memory (under 8 GB in total or under 2 GB available). The web board's server takes about 100–130 MB and its browser tab about 60–90 MB; consider setting dispatch.watch.web to false in the config file.",
   boardOff: 'The web board is off: set dispatch.watch.web to true in the config file, or turn it on with /foreman-en:setup.',
+  boardCliUsage: `Usage: foreman board [--session <conversation ID>] [--url | --json]
+       foreman board --replay <conversation ID, run ID, group, or all> [--speed <rate>] [--maxgap <seconds>] [--url | --json]
+       foreman board --stop [--json]
+
+Opens the browser by default. Use --url or --json for output only. --stop closes the live board without stopping tasks.`,
+  boardRunsDirInvalid: 'dispatch.runs_dir must be a path string or null',
+  boardBrowserFailed: (reason) => `Could not open the browser; open the URL above manually: ${reason}`,
+  boardStopped: 'Live board stopped. Running tasks are unaffected.',
+  boardIncompatible: (version) => `The running board uses an incompatible protocol (version ${Number.isInteger(version) ? version : 'unknown'}). Stop it with its original launcher, then try again. It was left running.`,
   boardStartFailed: (reason) => `The web board failed to start: ${reason}`,
   boardNotRunning: 'The board server is not running',
   boardStopUnverified: (pid) => `The board server (pid ${pid}) did not answer, so it could not be confirmed and the process was left alone`,

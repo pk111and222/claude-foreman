@@ -232,6 +232,23 @@ The image module's workflow is in [references/image.md](foreman-en/skills/dispat
 
 ### The web board
 
+#### Open it from a terminal
+
+Requires Node.js 18 or newer, but not a running Claude Code process or an installed Claude plugin. Install the package from [GitHub Releases](https://github.com/pk111and222/claude-foreman/releases/tag/foreman-cli-v0.1.0):
+
+```sh
+npm install -g https://github.com/pk111and222/claude-foreman/releases/download/foreman-cli-v0.1.0/pk111and222-foreman-cli-0.1.0.tgz
+foreman board
+```
+
+- `foreman board` opens the global board in your default browser; add `--session <conversation ID>` to go straight to a conversation. With no local records, it shows an empty board.
+- `foreman board --url` prints only the link. `foreman board --json` prints JSON. Neither opens a browser.
+- `foreman board --replay <conversation ID, run ID, group, or all>` opens a separate history replay. `foreman board --stop` only stops the live board; it does not stop tasks or replays.
+
+The CLI and plugin share user settings and records (by default `~/.claude/foreman/runs`; override with `dispatch.runs_dir` or `FOREMAN_RUNS_DIR`). They reuse one compatible, localhost-only live server per records directory. Manual opening works regardless of `dispatch.watch.web` or `dispatch.watch.web_open` and does not change either setting. The standalone CLI reads existing records; dispatch still belongs to the plugin. Update the Claude plugin to the same or a newer release of this code before using both launchers together: older plugins may restart the board when their build differs.
+
+#### Open it from Claude Code
+
 Another way to watch besides the terminal live view, off by default: set `dispatch.watch.web` to `true` in the config, or run `/foreman-en:setup` (it decides from this computer's memory). While it's on, handoffs give the board link and no longer open the terminal live view by themselves; use `/foreman-en:watch` when you want the terminal view. After handing work off, Claude Code adds the board link to the sentence that tells you so (on every handoff, once for several runs handed off together); while runs are still going, the last line of each of its replies is the board link, and the final report has it too. A plugin hook also shows the link right before the handoff command runs; the desktop app folds it into the tool calls. When the conversation started a run during a turn (a handoff command leaves a mark for the conversation as soon as it runs, however it was written) but Claude Code's reply text has no board link, the hook stops the turn from ending once, so Claude Code adds that sentence. To have the board come up by itself, set `dispatch.watch.web_open` to `true`: the first handoff of each conversation opens it once in your default browser.
 
 - **Opening it**: when it's on, every handoff first gives a link in the conversation, then starts the work; `/foreman-en:watch` gives one too. It opens in your default browser: you see the star map first, then fly into that conversation's board on your own (a reload goes straight back to the board); it never opens inside the Claude app.

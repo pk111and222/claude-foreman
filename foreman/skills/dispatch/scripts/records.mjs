@@ -1,11 +1,13 @@
 // 记录目录、启动登记锁、准入、活动状态和 watch 启动器。
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { ENTRY, USER_CONFIG, defaultRunsRoot, runsMovedNow, resolveAgentAlias, agentMaxParallel } from './config.mjs';
-import { M, die, notice, pidExists, processStartTimes, sleep, pathKey, clip, oneLine, plainCommand, retryBusy, replaceFile, PROFILE, profile, LANGUAGE } from './util.mjs';
+import { M, die, notice, pidExists, processStartTimes, sleep, pathKey, clip, oneLine, plainCommand, retryBusy, replaceFile, PROFILE, profile } from './util.mjs';
 import { D } from './format.mjs';
 import { acquireLock } from './locks.mjs';
+import { boardUrl } from './board/protocol.mjs';
+import { openBrowser } from './board/browser.mjs';
 
 // 终止标记：cancel 命令和实时查看里按 x 时写进任务的记录目录，运行中的任务看到就停下。
 const CANCEL_FILE = 'cancel';
@@ -53,14 +55,11 @@ await import(pathToFileURL(candidates.find((p) => fs.existsSync(p)) ?? candidate
   try { fs.writeFileSync(path.join(RUNS_ROOT, 'watch.mjs'), launcher); } catch { /* 不影响主流程 */ }
 }
 
-// 网页看板的地址：直接进入这个对话（session 为空时进宇宙）
-const boardUrl = (lock, session = CLAUDE_SESSION) =>
-  `http://127.0.0.1:${lock.port}/${lock.token}/?level=all&lang=${encodeURIComponent(LANGUAGE)}${session ? `&s=${encodeURIComponent(session)}` : ''}`;
 // 只读锁文件、看进程在不在；结果和 status 取地址时不启动服务。
 function liveBoardUrl() {
   try {
     const lock = JSON.parse(fs.readFileSync(path.join(RUNS_ROOT, 'board.lock.json'), 'utf8'));
-    return lock.port > 0 && lock.token && Number.isInteger(lock.pid) && pidExists(lock.pid) ? boardUrl(lock) : null;
+    return lock.port > 0 && lock.token && Number.isInteger(lock.pid) && lock.pid > 0 && pidExists(lock.pid) ? boardUrl(lock, CLAUDE_SESSION) : null;
   } catch { return null; }
 }
 // 只装饰打印的结果，不把服务每次启动都会换的口令写进记录。
@@ -110,22 +109,12 @@ function claimBoardOpen() {
   return file;
 }
 
-function openBoard(url, mark) {
+async function openBoard(url, mark) {
   // 没打开成：去掉刚抢到的标记，下次派出再试
   const failed = () => { try { fs.rmSync(mark, { force: true }); } catch { /* 下次照样试 */ } };
   try {
-    // 只给测试用：记录地址，避免真的打开浏览器。
-    if (process.env.FOREMAN_TEST_OPEN !== undefined) {
-      fs.appendFileSync(process.env.FOREMAN_TEST_OPEN, `${url}\n`);
-      notice(M.boardOpened);
-      return;
-    }
-    const [command, args] = process.platform === 'win32' ? ['rundll32', ['url.dll,FileProtocolHandler', url]]
-      : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
-    const child = spawn(command, args, { detached: true, stdio: 'ignore', windowsHide: true });
-    child.once('error', failed);
-    child.once('spawn', () => notice(M.boardOpened));
-    child.unref();
+    await openBrowser(url, { waitForExit: false });
+    notice(M.boardOpened);
   } catch { failed(); }
 }
 // 网页看板开着时紧接着开工行给出这个对话的看板地址：Claude Code 写"已派出"那句话时照着附上（钩子显示的那条在桌面版里是折起来的）。
@@ -837,4 +826,4 @@ function isRunning(m, { query = true } = {}) {
 }
 const UNVERIFIED_LIMIT_MS = 25 * 3600000;
 
-export { RUNS_ROOT, boardUrl, liveBoardUrl, withBoardUrl, announceBoard, initializeRecords, CANCEL_FILE, UNFINISHED_STATUSES, CLAUDE_SESSION, isCancelled, requestCancel, cancelSource, writeWatchLauncher, newRunDir, listRuns, saveMeta, metaWriteWarning, settleMeta, findRun, describeActivity, groupRuns, checkAdmission, precheckAdmission, readRunsLocked, runEnd, runOutcome, resumeVerdict, resultValid, resumedRuns, groupTally, groupSummary, groupScopeOwner, absolute, readMeta, checkRunners, isRunning, writesFiles };
+export { RUNS_ROOT, liveBoardUrl, withBoardUrl, announceBoard, initializeRecords, CANCEL_FILE, UNFINISHED_STATUSES, CLAUDE_SESSION, isCancelled, requestCancel, cancelSource, writeWatchLauncher, newRunDir, listRuns, saveMeta, metaWriteWarning, settleMeta, findRun, describeActivity, groupRuns, checkAdmission, precheckAdmission, readRunsLocked, runEnd, runOutcome, resumeVerdict, resultValid, resumedRuns, groupTally, groupSummary, groupScopeOwner, absolute, readMeta, checkRunners, isRunning, writesFiles };

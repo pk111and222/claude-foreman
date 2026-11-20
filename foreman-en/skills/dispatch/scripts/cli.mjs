@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // 唯一入口：参数解析、子命令分发和适配器选择。
-import { spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { formatConfigText, isOneLine } from './config-layout.mjs';
 import { acquireLockSync } from './locks.mjs';
-import { HERE, M, die, need, notice, resolveDir, readBrief, isGitRepo, isAscii, agentTypeOf, closestMatches, pathKey, pidExists, sleep } from './util.mjs';
+import { HERE, M, die, need, notice, resolveDir, readBrief, isGitRepo, isAscii, agentTypeOf, closestMatches, pathKey } from './util.mjs';
 
 // 只输出结果的子命令接到 head 这类提前关掉管道的命令上时，写 stdout 会抛 EPIPE：读的一方已经够了，安静退出，
 // 不打 Node 的堆栈。会派活、会改记录的子命令不这样处理（中途退出会丢掉收尾）
@@ -47,7 +47,7 @@ if (process.argv[2] === 'layout') {
   process.exit(0);
 }
 
-// 其余模块在 --help 之后才加载：config.mjs 一加载就会迁移旧版的配置和偏好文件，--help 不该写任何文件。
+// 其余模块在 --help 之后才加载：加载调度配置会迁移旧版的配置和偏好文件，--help 不该写任何文件。
 const { USER_CONFIG, USER_PREFS, PROJECT_PREFS, LEGACY_PROJECT_PREFS, agentMaxParallel, CLAUDE_CODE, cellList, eachEntry, mapCells, sceneView, selectScene, isScened, resolveAgentAlias, detectEnvironment, projectFile, loadConfig, readRawConfig, resolveProfile, validatePlan, unknownAgentError } = await import('./config.mjs');
 const { cmdPlan, readPlan, loadPlan } = await import('./plan.mjs');
 const { buildSummary: summarize } = await import('./summary.mjs');
@@ -369,156 +369,14 @@ function cmdConfig(o) {
   process.stdout.write(o.format === 'md' ? configReport(cfg, result.summary) : JSON.stringify(result, null, 2) + '\n');
 }
 
-async function cmdBoard(o) {
-  if (o.session !== undefined && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(o.session)) die(M.badArg(`--session ${o.session}`));
-  if (o.stop && o.replay != null) die(M.badArg('--replay'));
-  const cfg = load(null);
-  // 关掉的时候不看 dispatch.watch.web：服务可能是开着的时候启动的
-  if (!cfg.dispatch.watch.web && !o.stop) {
-    process.stdout.write(JSON.stringify({ enabled: false, message: M.boardOff }, null, 2) + '\n');
-    return;
-  }
-  const boardDir = path.join(HERE, 'board');
-  if (o.replay != null) {
-    const { createInterface } = await import('node:readline');
-    const args = [path.join(boardDir, 'server.mjs'), '--replay', o.replay, '--runs', RUNS_ROOT, '--config', USER_CONFIG, '--idle-min', '10'];
-    for (const key of ['speed', 'maxgap']) if (o[key] != null) args.push(`--${key}`, o[key]);
-    let child, reply;
-    try {
-      fs.mkdirSync(RUNS_ROOT, { recursive: true });
-      // 工作目录放在记录目录：Windows 上进程的当前目录删不掉，放在插件目录里会卡住插件的卸载和更新
-      child = spawn(process.execPath, args, { cwd: RUNS_ROOT, detached: true, windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'] });
-      reply = await new Promise((resolve) => {
-        const lines = createInterface({ input: child.stdout });
-        const finish = (value) => { clearTimeout(timer); lines.close(); child.stdout.destroy(); child.unref(); resolve(value); };
-        const timer = setTimeout(() => finish({ error: 'timed out after 120 seconds' }), 120000);
-        child.once('error', (error) => finish({ error: error.message }));
-        child.once('close', (code) => finish({ error: `exit code ${code}` }));
-        lines.once('line', (line) => {
-          try { finish(JSON.parse(line)); } catch { finish({ error: 'invalid startup response' }); }
-        });
-      });
-    } catch (error) { child?.kill(); die(M.boardStartFailed(error.message)); }
-    if (reply.error) {
-      child.kill();
-      if (reply.code === 'NOT_FOUND') die(M.boardReplayNotFound(o.replay));
-      if (reply.code === 'REPLAY_TOO_LARGE') die(M.boardReplayTooLarge((reply.bytes / 1024 ** 2).toFixed(1), (reply.limit / 1024 ** 2).toFixed(1)));
-      die(M.boardStartFailed(reply.error));
-    }
-    try {
-      const response = await fetch(new URL('health', reply.url), { signal: AbortSignal.timeout(5000) });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      const data = await response.json();
-      process.stdout.write(JSON.stringify({ enabled: true, url: reply.url, started: true, replay: { target: o.replay, sessions: data.sessions } }, null, 2) + '\n');
-    } catch (error) { child.kill(); die(M.boardStartFailed(error.message)); }
-    return;
-  }
-  const [{ buildId }, { removeLock }] = await Promise.all([import('./board/build-id.mjs'), import('./board/lock.mjs')]);
-  const build = buildId(boardDir);
-  const lockFile = path.join(RUNS_ROOT, 'board.lock.json'), errFile = path.join(RUNS_ROOT, 'board.err');
-  let reason = 'health check failed';
-  // 只采信这次启动的子进程写下的 board.err（按 pid 认），别的尝试留下的不算
-  const fail = (fallback, childPid) => {
-    let message = fallback;
-    try {
-      const err = JSON.parse(fs.readFileSync(errFile, 'utf8'));
-      if (childPid && err.pid === childPid && err.error) message = err.error;
-    } catch { /* 没有这次的服务端错误时用退出原因 */ }
-    die(M.boardStartFailed(message));
-  };
-  const reclaim = (raw) => { try { removeLock(lockFile, raw); } catch (error) { fail(error.message); } };
-  const liveBoard = async (timeout = 1000) => {
-    let raw, lock;
-    try { raw = fs.readFileSync(lockFile, 'utf8'); lock = JSON.parse(raw); }
-    catch (error) { reason = error.message; return { state: 'absent' }; }
-    if (!Number.isInteger(lock?.pid) || lock.pid <= 0 || !pidExists(lock.pid)) return { state: 'absent' };
-    try {
-      if (lock.port > 0) {
-        const response = await fetch(`http://127.0.0.1:${lock.port}/${lock.token}/health`, { signal: AbortSignal.timeout(timeout) });
-        const health = await response.json();
-        if (response.ok && health.ok === true && health.v === 1 && health.pid === lock.pid) return { state: 'ready', lock, raw, build: health.build };
-        reason = 'health check failed';
-      }
-    } catch (error) {
-      reason = error.message;
-      if (error.cause?.code === 'ECONNREFUSED') return { state: 'absent' };
-    }
-    return { state: 'wait', lock, raw };
-  };
-  // 关掉 liveBoard 确认过的服务，等它退出后回收锁。先凭令牌请它自己退出（server.mjs 的 shutdown），
-  // 旧版服务没有这个接口、或者请求没成功时才按 pid 结束。成功返回 null；没关掉返回 { reason }：结束进程时的报错，等不到退出时为 null
-  const stopServer = async ({ lock: { pid, port, token }, raw }) => {
-    let kill = true;
-    try { kill = !(await fetch(`http://127.0.0.1:${port}/${token}/shutdown`, { method: 'POST', signal: AbortSignal.timeout(5000) })).ok; }
-    // 连接被拒说明服务已经退出，这个 pid 可能已经给了别的程序，不能再结束它；超时（服务正忙）照旧按 pid 结束
-    catch (error) { kill = error.cause?.code !== 'ECONNREFUSED'; }
-    if (kill) {
-      try { process.kill(pid); } catch (error) { if (error.code !== 'ESRCH') return { reason: error.message }; }
-    }
-    // POSIX 上旧服务正忙时信号要等同步读取结束才处理，和接管一样最多等 15 秒；
-    // Windows 上 kill 是强制结束，旧服务来不及自己删锁，所以只等进程退出，锁由这里回收
-    const deadline = Date.now() + 15000;
-    while (Date.now() < deadline && pidExists(pid)) await sleep(100);
-    if (pidExists(pid)) return { reason: null };
-    reclaim(raw);
-    return null;
-  };
-  // 锁里的服务在但一时没回应（同步读大记录时会这样）：最多等 15 秒
-  const settle = async () => {
-    const deadline = Date.now() + 15000;
-    let found = await liveBoard(5000);
-    while (found.state === 'wait' && Date.now() < deadline) {
-      await sleep(100);
-      found = await liveBoard(Math.max(1, Math.min(1000, deadline - Date.now())));
-    }
-    return found;
-  };
-  if (o.stop) {
-    const found = await settle();
-    if (found.state === 'absent') { process.stdout.write(JSON.stringify({ stopped: false, message: M.boardNotRunning }, null, 2) + '\n'); return; }
-    // 进程在但健康检查对不上：可能是进程号被别的程序复用了，不能结束它
-    if (found.state === 'wait') die(M.boardStopUnverified(found.lock.pid));
-    const failure = await stopServer(found);
-    if (failure) die(M.boardStopFailed(found.lock.pid, failure.reason));
-    process.stdout.write(JSON.stringify({ stopped: true, pid: found.lock.pid }, null, 2) + '\n');
-    return;
-  }
-  let found = await settle();
-  // 等了 15 秒还没回应就接管；原来的服务恢复后发现锁不是自己的会自行退出
-  if (found.state === 'wait') reclaim(found.raw);
-  let lock = found.state === 'ready' ? found.lock : null;
-  if (lock && found.build !== build) {
-    const failure = await stopServer(found);
-    if (failure) fail(failure.reason ?? `old board server (pid ${lock.pid}) did not exit`);
-    lock = null;
-  }
-  const started = !lock;
-  if (!lock) {
-    let spawnError, exited, child;
-    try {
-      fs.mkdirSync(RUNS_ROOT, { recursive: true });
-      fs.rmSync(errFile, { force: true });
-      // Windows 上必须脱离调用方控制台，否则后续命令的 Ctrl+C 会把看板一起停掉。工作目录不放在插件目录里（同回放服务）。
-      child = spawn(process.execPath, [path.join(boardDir, 'server.mjs'), '--runs', RUNS_ROOT, '--config', USER_CONFIG, '--idle-min', '30'], {
-        cwd: RUNS_ROOT, detached: true, stdio: 'ignore', windowsHide: true,
-      });
-      child.once('error', (error) => { spawnError = error; });
-      child.once('exit', (code) => { exited = `exit code ${code}`; });
-      child.unref();
-    } catch (error) { fail(error.message); }
-    const deadline = Date.now() + 20000;
-    while (Date.now() < deadline) {
-      found = await liveBoard(Math.max(1, Math.min(1000, deadline - Date.now())));
-      lock = found.state === 'ready' ? found.lock : null;
-      if (lock) break;
-      if (spawnError || exited) fail(spawnError?.message || exited, child.pid);
-      await sleep(Math.max(0, Math.min(100, deadline - Date.now())));
-    }
-    if (!lock) fail(reason, child.pid);
-  }
-  const session = o.session ?? CLAUDE_SESSION;
-  const url = records.boardUrl(lock, session);
-  process.stdout.write(JSON.stringify({ enabled: true, url, started }, null, 2) + '\n');
+async function cmdBoard(opts) {
+  const { controlBoard } = await import('./board/control.mjs');
+  try {
+    const result = await controlBoard(opts, {
+      runsRoot: RUNS_ROOT, configFile: path.resolve(USER_CONFIG), enabled: CONFIG.dispatch.watch.web, session: CLAUDE_SESSION,
+    });
+    process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  } catch (error) { die(error.message); }
 }
 
 // 所有协作方都报告，仅被等级引用的协作方影响总体结果。
@@ -639,6 +497,8 @@ function cmdTiers(o) {
 
 const { cmd, opts } = parseArgs(process.argv.slice(2));
 if (cmd === 'agy-guard') {
+  const { migrateLegacyFiles } = await import('./config.mjs');
+  migrateLegacyFiles();
   const { manageGuard } = await import('./adapters/agy-setup.mjs');
   try { process.stdout.write(JSON.stringify(await manageGuard(opts.action), null, 2) + '\n'); }
   catch (e) { die(e.message); }
