@@ -225,7 +225,7 @@ function groupHead(all, t) {
 
 // 计划里还没启动的席位：头像和模型先显示出来（虚线框），状态写 planned
 function fillGhost(el, lane, t) {
-  const s = lane.seat, key = avatarFor(s.model, null);
+  const s = lane.seat, key = avatarFor(s.model, U.agents.find((a) => a.id === s.agent)?.type);
   el.style.setProperty('--tint', rgba(key));
   el.classList.remove('running');
   const img = el.querySelector('.av');

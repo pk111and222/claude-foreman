@@ -23,6 +23,7 @@ node "<脚本路径>" check  [--agent <协作方>] [--cwd "<项目目录>"] [--f
 node "<脚本路径>" models [--format json|md]
 node "<脚本路径>" agy-guard <install|uninstall|status>（agy 的全局守卫，见下面 check 一节）
 node "<脚本路径>" tiers  [--model <名字>]... [--all] [--cwd "<项目目录>"] [--format json|md]（模型档位、综合分和长短处，规则见 references/model-tiers.md）
+node "<脚本路径>" await-health (--group <组名> | --run <run_id>) [--check]
 node "<脚本路径>" await-busy (--group <组名> | --run <run_id>) [--after 分钟]
 node "<脚本路径>" cancel --run <run_id>
 node "<脚本路径>" judge  --run <run_id> [--accept "<编号,…>"] [--partial "<编号,…>"] [--reject "<编号,…>"] [--same "<编号>=<run_id>:<编号>,…"] [--clear "<编号,…>"]
@@ -132,6 +133,9 @@ node "<脚本路径>" plan --cwd "<项目目录>" --module image --cell <generat
 - 正常结束（`done`）、却没交回有效结果的任务（执行、图像和讨论没有合格报告；审查的 `verdict` 为 `incomplete`，或者没有报告、也不是 Codex 原生审查），`status` 和实时查看记成 ✗ "no valid result"，组汇总算失败，和 `status --plan` 里的 `ok` 判断一致。同一计划同一席重新启动过的，前面那几轮在 `status --group` 的汇总里算"已续接"，实时查看只显示最新的一轮。
 - `status` 列表不列出读不了 `meta.json` 的任务（被别的程序占着、不许别人读，或者内容不完整），末尾一行写明有几个。`status --run <run_id>` 读不了 `meta.json`、但读得出 `result.json` 时，输出 `result.json`，在 `warnings` 末尾注明；两个都读不了时报错。
 - 标成已处理、又没有结束时间的任务，用时算到运行目录里除 `meta.json` 和 `verdict.json` 以外最晚修改的那个文件（标记已处理会改写 `meta.json`，`judge` 往往很久以后才写 `verdict.json`）。
+
+## await-health
+等 3 分钟后只输出一个检查点（`--check` 立即检查）。`runs` 列出每个工作包的最新一轮或指定任务，带 `status`、`state`，运行中的 `activity` 会显示末次活动和是否有命令在执行；`queued` 列出本组在等并发名额的票据。`done` 只表示**有记录、在检查范围内**的任务均已退出且无排队项，不代表成功，不保证所有启动都曾登记。没找到记录时 `done: false`。批次还需要监控时再启动下一次检查；此命令不取消、不重启任务、不调用模型。处理规则见 `references/recovery.md`。
 
 ## judge 和 stats
 审查或讨论结束、Claude 核实完以后，用 `judge` 记下每条意见的去留；`stats` 把这些记录和用量汇总成各模型的本地实测。

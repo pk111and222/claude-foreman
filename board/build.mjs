@@ -1,4 +1,4 @@
-// 把 board/web 下的样式和脚本拼成一个自包含的 index.html，头像卡片（board/avatars/*.png）以 data URI 内嵌，
+// 把 board/web 下的样式和脚本拼成一个自包含的 index.html，品牌图标（board/avatars/*.png）以 data URI 内嵌，
 // 写到插件里：foreman/skills/dispatch/scripts/board/index.html（英文插件由 tools/sync-shared.mjs 同步过去）。
 // 页面语言默认中文，服务按插件的 language.json 在返回页面时把 window.__LANG__ 换成 'en'。
 import fs from 'node:fs';

@@ -1,5 +1,5 @@
 'use strict';
-// 模型名 → 头像卡片和主题色。规则和 foreman 的 watch-intro.mjs 一致（AVATAR_RULES、LOOKS）。
+// 模型名和接入方式 → 品牌图标和主题色。网页把 Codex 和 ChatGPT 分开显示。
 
 const AVATAR_RULES = [
   ['claude', /claude|sonnet|opus|haiku|anthropic/],
@@ -15,6 +15,7 @@ const AVATAR_RULES = [
 ];
 const LOOKS = {
   claude: { name: 'Claude', color: [232, 118, 64] },
+  codex: { name: 'Codex', color: [236, 236, 236] },
   chatgpt: { name: 'ChatGPT', color: [236, 236, 236] },
   gemini: { name: 'Gemini', color: [96, 156, 250] },
   deepseek: { name: 'DeepSeek', color: [92, 120, 254] },
@@ -36,9 +37,9 @@ function avatarFor(modelName, agentType) {
       const m = re.exec(part);
       if (m && (!best || m.index < best.at)) best = { key, at: m.index };
     }
-    if (best) return best.key;
+    if (best) return best.key === 'chatgpt' && (agentType === 'codex cli' || part.includes('codex')) ? 'codex' : best.key;
   }
-  return !name && agentType === 'codex cli' ? 'chatgpt' : 'unknown';
+  return agentType === 'codex cli' ? 'codex' : 'unknown';
 }
 
 const look = (key) => LOOKS[key] || LOOKS.unknown;

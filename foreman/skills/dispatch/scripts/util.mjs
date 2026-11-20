@@ -154,7 +154,9 @@ export const profile = (stage, started) => process.stderr.write(`foreman-profile
 function processStartTimes(pids, { timeoutMs = 15000 } = {}) {
   const times = new Map(pids.filter((pid) => Number.isInteger(pid) && pid > 0).map((pid) => [pid, null]));
   if (!times.size) return times;
-  const ids = [...times.keys()].join(',');
+  // macOS 的 ps 遇到超过 PID 上限的编号会拒绝整个列表，不能让一条异常记录挡住其余核验。
+  const ids = [...times.keys()].filter((pid) => process.platform !== 'darwin' || pid < 100000).join(',');
+  if (!ids) return times;
   const powershell = path.join(process.env.SystemRoot || 'C:/Windows', 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   try {
     // 缺失进程会使 PowerShell 以 1 退出，显式成功以保留同批其余进程的结果。

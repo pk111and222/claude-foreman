@@ -1,5 +1,30 @@
 {
+  "name": "@pk111and222/foreman-cli",
+  "version": "0.1.0",
+  "description": "Standalone CLI for the Foreman web board",
   "private": true,
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "bin": { "foreman": "bin/foreman.mjs" },
+  "files": [
+    "bin/foreman.mjs",
+    "foreman/skills/dispatch/scripts/board/",
+    "foreman/skills/dispatch/scripts/adapters/agy-models.mjs",
+    "foreman/skills/dispatch/scripts/adapters/parallel.mjs",
+    "foreman/skills/dispatch/scripts/config-layout.mjs",
+    "foreman/skills/dispatch/scripts/config.mjs",
+    "foreman/skills/dispatch/scripts/display.mjs",
+    "foreman/skills/dispatch/scripts/format.mjs",
+    "foreman/skills/dispatch/scripts/language.json",
+    "foreman/skills/dispatch/scripts/locks.mjs",
+    "foreman/skills/dispatch/scripts/messages.mjs",
+    "foreman/skills/dispatch/scripts/models.json",
+    "foreman/skills/dispatch/scripts/models.mjs",
+    "foreman/skills/dispatch/scripts/prices.json",
+    "foreman/skills/dispatch/scripts/prices.mjs",
+    "foreman/skills/dispatch/scripts/records.mjs",
+    "foreman/skills/dispatch/scripts/util.mjs"
+  ],
   "scripts": {
     "test": "node --test --test-concurrency=9 tests/*.test.mjs"
   }

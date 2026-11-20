@@ -176,8 +176,10 @@ flowchart TD
 
 - 给出方案之前，以及执行之后要评估效果、决定下一步怎么调时，复杂、不确定的问题先找其他模型讨论，结论由 Claude Code 裁决。
 - 动手之前，执行类工作按等级和配置派出；只由 Claude Code 做的工作（决策、设计、文字）和 0 级的小事不派。
-- 交付之前，按改动的风险判断要不要请另一个模型审查。
-- 大任务能拆成互不相干的几份时，同时派给几个会话，缩短等待（每个协作方的并发上限见 `max_parallel`）。
+- 交付前按改动风险决定是否外审。外审默认只派一位主审，显式配置的多席和必选照旧。
+- 复杂任务先拆工作包，互不依赖、写入范围不重叠的几份同时派出（并发上限见 `max_parallel`）。等待期间主流程每 3 分钟检查一次；失败的工作包只在有恢复依据时重试一次，依赖它的步骤先暂停。
+- A 的候选版本送审时，已具备开工条件的 B 同时开始开发。调度者决定是否用独立工作树；依赖 A 的成果仍要等 A 审查通过才能合入。
+- 人工测试发现问题时，主流程区分体验/功能缺口、Bug/崩溃和大调整，只停止已经过时的开发、审查和验证，保留仍有效的结果。[补充修复流程](foreman/skills/dispatch/references/feedback.md)
 
 不想让 Claude Code 自己发起，把 `dispatch.auto` 设成 `false`：派活、讨论和审查之前它都会先问你。
 
@@ -231,6 +233,23 @@ flowchart TD
 - Claude 桌面版里，实时画面开在终端面板里，派活后自动打开（开着网页看板时不自动打开，只给看板链接）；命令行版里，Claude Code 会把命令发给你，在另一个终端里运行。
 
 ### 网页看板
+
+#### 从终端独立打开
+
+需要 Node.js 18 或更新版本。不用启动 Claude Code，也不用安装 Claude 插件。从 [GitHub Releases](https://github.com/pk111and222/claude-foreman/releases/tag/foreman-cli-v0.1.0) 安装：
+
+```sh
+npm install -g https://github.com/pk111and222/claude-foreman/releases/download/foreman-cli-v0.1.0/pk111and222-foreman-cli-0.1.0.tgz
+foreman board
+```
+
+- `foreman board` 打开默认浏览器，进入全局看板；可加 `--session <对话 ID>` 直达某个对话。没有本机记录时显示空看板。
+- `foreman board --url` 只打印链接；`foreman board --json` 只输出 JSON。两种方式都不打开浏览器。
+- `foreman board --replay <对话 ID、任务 ID、组名或 all>` 用独立进程回放历史，不打断直播；`foreman board --stop` 只关闭直播服务，不停止任务或回放。
+
+独立命令与插件共用用户配置和任务记录（默认 `~/.claude/foreman/runs`；可用 `dispatch.runs_dir` 或 `FOREMAN_RUNS_DIR` 指定目录）。同一目录复用一个兼容的直播服务，只在本机监听。手动打开不受 `dispatch.watch.web` 或 `dispatch.watch.web_open` 影响，也不会修改它们。独立命令只查看已有记录，派工仍由插件负责。同时使用两个入口时，建议升级 Claude 插件到包含这次拆分的版本；旧版插件遇到不同构建仍可能重启看板。
+
+#### 从 Claude Code 打开
 
 终端实时查看之外的另一个入口，默认关闭：在配置里把 `dispatch.watch.web` 设成 `true`，或者运行 `/foreman:setup`（按本机内存决定开不开）。开着时派出任务只给看板链接，不再自动打开终端实时查看；想在终端里看时用 `/foreman:watch`。派出任务后，Claude Code 会在告诉你"已派出"的那句话里附上看板链接（每次派出都附，一起派出的几个任务附一次）；还有任务在跑时，它每一轮回复的最后一行都是看板链接，最后的汇报里也有。插件的钩子在派出命令运行前也会显示这个链接，桌面版里它折在工具调用里面；这一轮里这个对话启动过任务（派出命令一运行就给这个对话留一个标记，命令怎么写都算）、Claude Code 的回复正文里却没有看板链接时，钩子会在这一轮结束前拦一次，让它补上那句话。想让看板自己弹出来，把 `dispatch.watch.web_open` 设成 `true`：每个对话第一次派出时，在默认浏览器里自动打开一次。
 

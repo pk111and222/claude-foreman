@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Hand off hands-on coding work to configured agents such as Codex, opencode and pi and check the result, gather other models to discuss complex designs, and have another model review changes independently before delivering them. Load before giving design suggestions or plans, before starting hands-on coding work or graphics (photos, illustrations, characters, scenes, even when they end up as SVG, HTML or an animation), and before delivering changes; also when the user mentions Codex or another agent, asks for a discussion or review, or mentions /foreman-en:run, /foreman-en:discuss or /foreman-en:review.
+description: Hand off hands-on coding work to configured agents such as Codex, opencode and pi and check the result, gather other models to discuss complex designs, and have another model review changes independently before delivering them. Load before giving design suggestions or plans, before starting hands-on coding work or graphics (photos, illustrations, characters, scenes, even when they end up as SVG, HTML or an animation), before delivering changes, or before acting on manual testing feedback; also when the user mentions Codex or another agent, asks for a discussion or review, or mentions /foreman-en:run, /foreman-en:discuss or /foreman-en:review.
 ---
 
 # foreman dispatch
@@ -33,7 +33,7 @@ A request often goes through several stages: settle the approach (**discuss**), 
 - A discussion is levelled before you give the approach, or before you judge the result of work already done and decide what to do next (also when the user only asks for advice); hands-on work before you start it; a review once the thing under review exists and has passed checking, by its actual risk. When a kind comes up again, level it from 0 as usual. Don't discuss or review just to follow the flow.
 - **None of them go by how much changes** (except the size threshold for reviews). **For discussions and hands-on work, when unsure, go one level up**; for a review you're unsure about, follow "Levels" in `references/review.md`.
 - Claude handles level 0 itself, without calling the script; level 1 `simple`, level 2 `normal` and level 3 `complex` go by `resolved_modules.<kind>.<level>`: pick from its candidates, or Claude does it if it says `"claude code"`. Don't override the config because a task looks big or small, and don't look outside the cell.
-- The numeric thresholds are defaults; if the preference files say otherwise, follow them: the level 0 criteria for hands-on work, the review size (roughly 300 lines or 5 files), 1 rework, and more than 10 minutes per part when splitting work.
+- The numeric thresholds are defaults; if the preference files say otherwise, follow them: the level 0 criteria for hands-on work, the review size (roughly 300 lines or 5 files), 1 rework.
 
 **Discussion** (by how uncertain the decision is and how costly a wrong choice would be)
 | Level | How to tell |
@@ -81,8 +81,9 @@ These hold whatever the preference files say; the script can only enforce some o
 ## Read before each step
 | When | Read first |
 |---|---|
+| Manual testing feedback changes work in progress or already finished | `references/feedback.md` |
 | A discussion is levelled 1 or higher, or the user asks for one; before writing the topic | `references/discuss.md` |
-| Hands-on work is levelled 1 or higher; before writing a brief or splitting work | `references/run.md`; for research tasks also `references/research.md` |
+| Hands-on work is levelled 1 or higher (before writing a brief or splitting work); or before overlapping a review with follow-on development | `references/run.md`; for research tasks also `references/research.md` |
 | A review is levelled 1 or higher, or the user asks for one; before creating the plan | `references/review.md` |
 | A discussion or review is about to start external seats, or a hands-on cell has several candidates or a required agent; before picking seats | `references/seats.md` |
 | Role mode was chosen, or review seats need different angles | `references/roles.md` (model tiers in `references/model-tiers.md`) |
@@ -94,7 +95,7 @@ These hold whatever the preference files say; the script can only enforce some o
 | The user asks about or wants to change the config, or the script prints a config migration message | `references/config.md` |
 
 ## When you hand off (every time)
-- Write briefs and topics to UTF-8 files (in the scratchpad directory if there is one) and start dispatch commands in the background (Bash `run_in_background`); you get notified when they finish, so don't poll. Right after starting, read the first three lines of the background output file once (the start line, the board address and a ready-made "Handed off" sentence; if they aren't there yet, read again a few seconds later): that isn't polling. Then wait for the notice. Seats that start together go in the same message.
+- Write briefs and topics to UTF-8 files (in the scratchpad directory if there is one) and start dispatch commands in the background (Bash `run_in_background`); start seats that can run together in the same message. Read the first three lines to confirm startup, then start the three-minute health check in `references/recovery.md`. Use completion notices for normal finishes; do not poll manually.
 - **Tell the user in the reply text which model and reasoning effort each uses**, taken from the first line the script prints ("<mode> started · <model> <effort> · <channel> · <level> · run dir …"), not from your own reading of the config; if the line ends with "model from Codex config", say so. With several participants, list each one, and say in one sentence whom you picked, why, and whom you left out.
 - While the web board is on, the first line is followed by `foreman: web board <url>` and a ready-made sentence, "Handed off: gpt-6-astra low · Codex CLI, level simple · [web board](<url>)": on every handoff (including one made after waking up on a completion notice, a rework resume and a discussion's next round), write that sentence as reply text before your next tool call; for several seats started together, make it one sentence with the link once. The user can't see it in your thinking, and the link the hook shows is folded into the tool calls in the desktop app, so neither replaces it.
 - **While runs are still going, end the reply text of every turn with `[web board](<url>)` on a line of its own**: the turn that handed off, a progress report after a wake-up, an answer to something else. Earlier text in the same message as a call that updates the task panel may not reach the conversation record, and the end-of-turn check then stops the turn once more. The address is in `board_url` in the result and in `status` output; when neither has it, run `node "<script path>" board` (`references/watch.md`).

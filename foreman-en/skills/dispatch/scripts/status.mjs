@@ -1,7 +1,7 @@
 // 状态列表、终止任务和排队检查；会话统计由入口提供只读函数。
 import fs from 'node:fs';
 import path from 'node:path';
-import { RUNS_ROOT, UNFINISHED_STATUSES, requestCancel, listRuns, findRun, readMeta, checkRunners, isRunning, runEnd, runOutcome, resumedRuns, groupRuns, groupSummary, describeActivity, saveMeta, metaWriteWarning, queuedRuns, withBoardUrl } from './records.mjs';
+import { RUNS_ROOT, CLAUDE_SESSION, UNFINISHED_STATUSES, requestCancel, listRuns, findRun, readMeta, checkRunners, isRunning, runEnd, runOutcome, resumedRuns, groupRuns, groupSummary, describeActivity, saveMeta, metaWriteWarning, queuedRuns, withBoardUrl } from './records.mjs';
 import { M, die, need, pidExists, processStartedAt, killTreeIfSame, sleep, modelOf, agentTypeOf, replaceFile } from './util.mjs';
 import { D, C, padWidth, visibleWidth, modelLabel, clock, took, outcomeStyle, usageLine, outsideCwdText, paintPlanWord } from './format.mjs';
 import { planStatus, describePlans } from './plan.mjs';
@@ -269,4 +269,36 @@ async function cmdAwaitBusy(o, config, load) {
   }
 }
 
-export { cmdStatus, cmdCancel, cmdAwaitBusy };
+const HEALTH_CHECK_MS = 3 * 60 * 1000;
+
+// 一次等待只报一个检查点：由持有任务上下文的主流程判断，不在这里终止或重试。
+async function cmdAwaitHealth(o) {
+  if (o.run != null ? !o.run.trim() || o.group != null : !o.group?.trim()) die(M.awaitHealthTarget);
+  if (!o.check) await sleep(HEALTH_CHECK_MS);
+  const batch = o.run ? [findRun(o.run, { tolerateUnreadable: true })] : groupRuns(o.group);
+  const inSession = (entry) => !CLAUDE_SESSION || entry.claude_session === CLAUDE_SESSION;
+  const runs = batch.filter((run) => o.run || inSession(run.meta) && run.meta.participant !== 'host');
+  checkRunners(runs.map((run) => run.meta));
+  const replaced = o.run ? new Set() : resumedRuns(runs, runs);
+  const items = runs.filter((run) => !replaced.has(run.id)).map((run) => {
+    if (!run.meta) return { run_id: run.id, status: 'unreadable', state: 'unknown' };
+    const { running, status, result, ok, blocked, partial } = runOutcome(run);
+    const state = running ? 'running' : blocked ? 'blocked' : result?.stale === true ? 'stale'
+      : ok ? 'ok' : partial ? 'partial' : status === 'done' ? 'no_valid_result' : 'failed';
+    const item = { run_id: run.id, title: run.meta.title, status, state, has_session: !!run.meta.session_id };
+    if (running || status === 'interrupted') {
+      try { item.activity = describeActivity(run.dir, { structured: true }); }
+      catch { item.activity = null; } // 日志轮换或暂时读不到，不代表任务已经失败。
+    }
+    if (running) {
+      item.elapsed_min = Number(((Date.now() - Date.parse(run.meta.started_at)) / 60000).toFixed(1));
+      item.stall_min = run.meta.stall_min ?? null;
+    }
+    return item;
+  });
+  const queued = o.run ? [] : queuedRuns(o.group).filter(inSession).map(({ agent, title, position, queued_at }) => ({ agent, title, position, queued_at }));
+  const done = items.length > 0 && queued.length === 0 && items.every(({ state }) => !['running', 'unknown'].includes(state));
+  process.stdout.write(`${JSON.stringify({ done, runs: items, queued }, null, 2)}\n`);
+}
+
+export { cmdStatus, cmdCancel, cmdAwaitBusy, cmdAwaitHealth };

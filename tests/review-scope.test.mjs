@@ -118,3 +118,24 @@ test('根提交相对空树，合并提交只比较第一个父提交', async (t
   assert.deepEqual(r.files.map((f) => [f.path, f.status]), [['side.txt', 'A']]); assert.ok(r.patch.includes('+merged change'));
   assert.ok(!r.patch.includes('first parent')); assert.ok(!r.patch.includes('working excluded'));
 });
+
+test('后续开发在另一工作树继续时，多提交候选的审查范围保持不变', async (t) => {
+  const h = sandbox(t), baseline = h.initGit();
+  h.write('source.txt', 'A interface\n'); commitAll(h);
+  h.write('a.txt', 'A implementation\n'); const candidate = commitAll(h);
+  const options = { base: baseline, file: ['source.txt'] };
+  const review = output(await compute(h, options));
+  assert.deepEqual(review.files.map((file) => file.path), ['a.txt', 'source.txt']);
+  assert.deepEqual(output(await compute(h, { commit: candidate })).files.map((file) => file.path), ['a.txt']);
+
+  const followOn = path.join(h.home, 'follow-on');
+  h.git(['worktree', 'add', '--quiet', '--detach', followOn, candidate]);
+  write(path.join(followOn, 'source.txt'), 'B changes the interface\n');
+  write(path.join(followOn, 'b.txt'), 'B implementation\n');
+  h.git(['-C', followOn, 'add', 'b.txt']);
+
+  const mixed = output(await compute(h, { ...options, cwd: followOn }));
+  assert.notEqual(mixed.fingerprint, review.fingerprint);
+  assert.deepEqual(mixed.files.map((file) => file.path), ['a.txt', 'b.txt', 'source.txt']);
+  assert.deepEqual(output(await compute(h, options)), review);
+});

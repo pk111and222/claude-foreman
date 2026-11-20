@@ -221,7 +221,7 @@ How image tasks go out: before work starts on each new graphic deliverable, Clau
   | | simple | normal | complex |
   |---|---|---|---|
   | `discuss` | 2 | 4 | 8 |
-  | `review` | 1 | 2 | 2 |
+  | `review` | 1 | 1 | 1 |
 
   Required agents count toward it, so it can't be lower than the cell's required count, or loading the config fails; it can be higher than the number of candidates, which means all of them take part. To always use a fixed set of agents at some level, list only those and set the seats to their number, or mark them all required. When `plan` creates a discussion or review plan, it checks that the external seats equal `min(seats, usable candidates)` (for a `visual` review only candidates that can read images count); otherwise it needs `--count-why "<reason>"`. Usable candidates are counted by agent ID, so one model reached two ways counts twice. Each level takes a positive integer.
 - `gap` (`review` only): whether each review level adds a gap seat, `true` or `false`. All three levels default to `false`. When it's on, the plan must list one gap seat (when the cell still has a suitable candidate); how the gap pass works is under "Gap pass" in `references/review.md`. When it's off, there's no gap pass. Writing it under `discuss` is an error.

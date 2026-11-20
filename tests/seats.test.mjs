@@ -53,7 +53,7 @@ test('未写 seats 时并发首次读取只补写和提示一次，保留原字�
     assert.equal(cfg.effective.dispatch.max_seats, undefined);
     assert.deepEqual(cfg.effective, output(results[0]).effective);
   }
-  const message = M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '讨论 2/4/8、审查 1/2/2');
+  const message = M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '讨论 2/4/8、审查 1/1/1');
   assert.equal(results.filter((r) => r.stderr === `foreman: ${message}\n`).length, 1);
   assert.ok(results.every((r) => r.stderr === '' || r.stderr === `foreman: ${message}\n`));
   assert.equal(json(h.userConfig).dispatch.max_seats, 9); assert.deepEqual(json(h.userConfig).custom, c.custom);
@@ -65,7 +65,7 @@ test('未写 seats 时并发首次读取只补写和提示一次，保留原字�
 
 test('seats 已写全时不补写 max_seats，也不改写文件或备份', async (t) => {
   const h = sandbox(t), c = baseConfig();
-  c.modules.default.review.seats.normal = 1;
+  c.modules.default.review.seats.normal = 2;
   h.config(c);
   const before = read(h.userConfig), r = await h.bridge(['config']);
   output(r);
@@ -114,7 +114,7 @@ for (const [lang, note] of [['zh', '手写的说明'], ['en', '']]) test(`只补
   const bak = path.join(path.dirname(h.userConfig), backups[0]);
   assert.equal(read(`${h.userConfig}.bak`), 'earlier backup'); assert.equal(read(bak), before);
   assert.deepEqual(json(h.userConfig), { ...c, modules: { default: { ...c.modules.default, review: { ...c.modules.default.review, seats: DEFAULT_SEATS.review } } } });
-  assert.equal(r.stderr, `foreman: ${MESSAGES[lang].configSeatsWritten(h.userConfig, bak, `${MESSAGES[lang].reportModuleNames.review.toLowerCase()} 1/2/2`)}\n`);
+  assert.equal(r.stderr, `foreman: ${MESSAGES[lang].configSeatsWritten(h.userConfig, bak, `${MESSAGES[lang].reportModuleNames.review.toLowerCase()} 1/1/1`)}\n`);
 });
 
 test('seats 与旧结构和 levels 在同一次迁移写入，必选数按改名去重后的格子计算', async (t) => {
@@ -128,7 +128,7 @@ test('seats 与旧结构和 levels 在同一次迁移写入，必选数按改名
   assert.equal(json(h.userConfig).levels, M.levelsNote); assert.equal(read(`${h.userConfig}.bak`), before);
   assert.ok(r.stderr.includes(M.configModulesMigrated(h.userConfig, `${h.userConfig}.bak`)));
   assert.ok(r.stderr.includes(M.configStructureMigrated(h.userConfig, `${h.userConfig}.bak`, 'first → fake-codex、second → fake-codex')));
-  assert.ok(r.stderr.includes(M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '讨论 2/4/8、审查 1/2/2')));
+  assert.ok(r.stderr.includes(M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '讨论 2/4/8、审查 1/1/1')));
   assert.deepEqual(fs.readdirSync(path.dirname(h.userConfig)).filter((name) => name.includes('.bak')), ['config.json.bak']);
 });
 
@@ -176,7 +176,7 @@ test('改写保留原配置文件的权限', { skip: process.platform === 'win32
   const h = sandbox(t), c = baseConfig(); delete c.modules.default.review.seats; h.config(c);
   fs.chmodSync(h.userConfig, 0o600);
   const r = await h.bridge(['config']);
-  assert.ok(r.stderr.includes(M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '审查 1/2/2')));
+  assert.ok(r.stderr.includes(M.configSeatsWritten(h.userConfig, `${h.userConfig}.bak`, '审查 1/1/1')));
   assert.equal(fs.statSync(h.userConfig).mode & 0o777, 0o600);
 });
 

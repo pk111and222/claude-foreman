@@ -91,7 +91,7 @@ function webOn(configFile) {
   return watch && typeof watch === 'object' ? watch.web === true : user.dispatch?.web === true;
 }
 
-// 看板地址由 board 子命令给：服务没在跑、锁是残留的、服务是旧版本时，它都会先处理好（不直接读锁文件，免得给出打不开的链接）
+// 看板地址由 board 子命令给：只复用通过健康检查的兼容服务，服务不在时会启动，不直接相信锁文件
 function boardUrl(configFile, session) {
   const r = spawnSync(process.execPath, [SCRIPT, 'board', ...(SAFE_ID.test(session || '') ? ['--session', session] : [])], {
     encoding: 'utf8', timeout: 12000, windowsHide: true, env: { ...process.env, FOREMAN_CONFIG: configFile },

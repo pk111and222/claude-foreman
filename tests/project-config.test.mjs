@@ -30,8 +30,8 @@ test('项目按等级覆盖 default seats/gap，场景块只覆写不同的级�
   const file = h.write('.claude/foreman.json', { modules: { default: { review: { seats: { complex: 3 }, gap: { normal: true } } }, research: { review: { seats: { complex: 6 }, gap: { complex: true } } } },
     dispatch: { discuss_max_rounds: 5, timeout_min: 900, stall_min: 80, busy_ask_min: 10 } });
   const out = output(await h.bridge(configArgs(h)));
-  assert.deepEqual(out.effective.modules.default.review.seats, { simple: 1, normal: 2, complex: 3 });
-  assert.deepEqual(out.effective.modules.research.review.seats, { simple: 1, normal: 2, complex: 6 });
+  assert.deepEqual(out.effective.modules.default.review.seats, { simple: 1, normal: 1, complex: 3 });
+  assert.deepEqual(out.effective.modules.research.review.seats, { simple: 1, normal: 1, complex: 6 });
   assert.deepEqual(out.resolved_modules.review.gap, { simple: false, normal: true, complex: false });
   assert.deepEqual(out.resolved_scenes.research.review.gap, { complex: true });
   for (const [key, value] of Object.entries(json(file).dispatch)) assert.equal(out.effective.dispatch[key], value);
@@ -140,7 +140,7 @@ test('席位数和补漏报错标出项目来源，包括场景继承 default；
     project.modules[scene] ??= { review: {} }; project.modules[scene].review.gap = { complex: true }; write(file, project);
     failed(await h.bridge(args), M.planGapMissing(`${key}.gap.complex`, M.list(['second', 'third'])) + from(`${key}.gap.complex`));
   }
-  c.modules.default.review.complex[0].required = c.modules.default.review.complex[1].required = true; h.config(c);
+  c.modules.default.review.complex[0].required = c.modules.default.review.complex[1].required = true; c.modules.default.review.seats.complex = 2; h.config(c);
   write(file, { modules: { default: { review: { seats: { complex: 1 } } } } });
   failed(await h.bridge(configArgs(h)), M.projectConfigInvalid(file, M.seatsBelowRequired('modules.default.review.seats.complex', 1, 2) + M.fromProjectConfig(file, 'modules.default.review.seats.complex')));
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { sandbox, output, failed, baseConfig, apiAgent, hostArgs, seedRun, json, read, write, ROOT, MESSAGES } from './helpers.mjs';
+import { sandbox, output, failed, baseConfig, DEFAULT_SEATS, apiAgent, hostArgs, seedRun, json, read, write, ROOT, MESSAGES } from './helpers.mjs';
 import { review } from './fixtures/reports.mjs';
 const M = MESSAGES.zh;
 const block = (names = ['code', 'research']) => `<!-- foreman:scenes -->\n${names.map((name) => `- **${name}**：规则`).join('\n')}\n<!-- /foreman:scenes -->`;
@@ -95,11 +95,12 @@ test('modules 拒绝混写、缺 default、非法场景名和旧 seats/gap 对�
 
 test('场景视图整格替换、继承其余格子，seats/gap 按级合并，resolved_scenes 只列差异', async (t) => {
   const h = sandbox(t), c = config(); prefs(h); c.agents.second = { ...c.agents.codex, model: 'second' };
+  c.modules.default.review.seats.complex = 2;
   c.modules.code = { review: { complex: [{ agent: 'second', effort: 'high', required: true }], seats: { complex: 1 }, gap: { complex: true } } };
   c.modules.research = { review: { simple: c.modules.default.review.simple } }; h.config(c);
   const out = output(await h.bridge(['config']));
   assert.deepEqual(out.effective.modules.code.review.normal, out.effective.modules.default.review.normal);
-  assert.deepEqual(out.effective.modules.code.review.seats, { simple: 1, normal: 2, complex: 1 });
+  assert.deepEqual(out.effective.modules.code.review.seats, { ...DEFAULT_SEATS.review, complex: 1 });
   assert.deepEqual(out.effective.modules.code.run, out.effective.modules.default.run);
   assert.deepEqual(out.resolved_scenes, { code: { review: { complex: [{ agent: 'second', model: 'second', effort: 'high', required: true, tier: null }], seats: { complex: 1 }, gap: { complex: true } } } });
   assert.ok(!out.summary.warnings.some((w) => w.kind === 'unused_agent' && w.agent === 'second'));
@@ -174,7 +175,7 @@ test('--scene 对所有模块有效，default 可兜底，场景不同的格子�
   const h = sandbox(t), c = config(); h.config(c);
   output(await h.bridge([...planArgs(h, 'run'), '--scene', 'default', '--scene-why', '普通任务']));
   failed(await h.bridge([...planArgs(h, 'run'), ...sceneArgs]), M.planSceneNoScenes);
-  prefs(h); c.modules.code = { run: { complex: [{ agent: 'codex', effort: 'high' }] }, review: { seats: { complex: 1 } } }; h.config(c);
+  prefs(h); c.modules.code = { run: { complex: [{ agent: 'codex', effort: 'high' }] }, review: { seats: { complex: 2 } } }; h.config(c);
   for (const module of ['run', 'review']) {
     failed(await h.bridge(planArgs(h, module)), M.sceneRequired(`modules.${module}.complex`, M.list(['default', 'code', 'research']), M.sceneDiff('code', module === 'run' ? M.reportCandidate : 'seats.complex')));
     for (const args of [['--scene', 'code'], ['--scene', 'code', '--scene-why', '  ']]) failed(await h.bridge([...planArgs(h, module), ...args]), M.planSceneWhyRequired);
@@ -315,9 +316,9 @@ test('审查意见回归：新写法缺 gap 不按旧做法补写；计划的场
 test('场景名 constructor 不会碰到对象原型：没写块时等于 default，写了块时按块合并', async (t) => {
   const h = sandbox(t), c = config(); h.config(c); prefs(h, block(['constructor']));
   output(await h.bridge([...planArgs(h), '--scene', 'constructor', '--scene-why', '规则']));
-  c.modules.constructor = { review: { seats: { complex: 1 } } }; h.config(c);
+  c.modules.constructor = { review: { seats: { complex: 2 } } }; h.config(c);
   const out = output(await h.bridge(['config', '--cwd', h.cwd]));
-  assert.deepEqual(out.resolved_scenes.constructor.review.seats, { complex: 1 });
+  assert.deepEqual(out.resolved_scenes.constructor.review.seats, { complex: 2 });
   output(await h.bridge([...planArgs(h), '--scene', 'constructor', '--scene-why', '规则']));
 });
 
@@ -326,7 +327,7 @@ test('项目偏好只启用定义过的用户场景，空块不阻止建计划�
   c.agents.second = { ...c.agents.codex, model: 'second' };
   c.modules.code = { review: { seats: { complex: 1 } } };
   c.modules.research = { run: { complex: [{ agent: 'codex', effort: 'low' }] },
-    review: { complex: [{ agent: 'codex', required: true }, { agent: 'second', required: true }] } }; h.config(c);
+    review: { complex: [{ agent: 'codex', required: true }, { agent: 'second', required: true }], seats: { complex: 2 } } }; h.config(c);
   const file = h.write('.claude/foreman.md', block(['code']));
   h.write('.claude/foreman.json', { modules: { default: { review: { seats: { complex: 1 } } } } });
   for (const lang of ['zh', 'en']) {
@@ -361,7 +362,7 @@ test('项目自己写的未定义场景仍报 problem，指出配置文件；没
 
 test('场景要求只列当前格子的候选、seats 和 gap 差异，中英都指出所属场景', async (t) => {
   const h = sandbox(t), c = config(); prefs(h); c.agents.second = { ...c.agents.codex };
-  c.modules.code = { review: { normal: [{ agent: 'second' }], seats: { normal: 1, complex: 1 } } };
+  c.modules.code = { review: { normal: [{ agent: 'second' }], seats: { normal: 2, complex: 2 } } };
   c.modules.research = { review: { gap: { normal: true } } }; h.config(c);
   for (const lang of ['zh', 'en']) {
     const m = MESSAGES[lang], diffs = m.list([m.sceneDiff('code', m.list([m.reportCandidate.toLowerCase(), 'seats.normal'])), m.sceneDiff('research', 'gap.normal')]);

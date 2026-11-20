@@ -23,6 +23,7 @@ node "<script path>" check  [--agent <agent>] [--cwd "<project dir>"] [--format 
 node "<script path>" models [--format json|md]
 node "<script path>" agy-guard <install|uninstall|status> (agy's global guard; see check below)
 node "<script path>" tiers  [--model <name>]... [--all] [--cwd "<project dir>"] [--format json|md] (model tiers, overall scores, strengths and weaknesses; rules in references/model-tiers.md)
+node "<script path>" await-health (--group <name> | --run <run_id>) [--check]
 node "<script path>" await-busy (--group <name> | --run <run_id>) [--after minutes]
 node "<script path>" cancel --run <run_id>
 node "<script path>" judge  --run <run_id> [--accept "<ids>"] [--partial "<ids>"] [--reject "<ids>"] [--same "<id>=<run_id>:<id>,…"] [--clear "<ids>"]
@@ -132,6 +133,9 @@ The results of `run`, `image`, `resume`, `discuss` and `review` are printed to s
 - A run that ended normally (`done`) but returned no valid result (no proper report for hands-on, image and discussion runs; for a review, a `verdict` of `incomplete`, or no report without being Codex's built-in review) shows as ✗ "no valid result" in `status` and the live view and counts as failed in the group summary, matching `ok` in `status --plan`. When a seat of a plan was started again, its earlier rounds count as resumed in the `status --group` summary, and the live view only shows the latest round.
 - The `status` list leaves out runs whose `meta.json` can't be read (another program holds it without read sharing, or its content is incomplete), and a last line says how many. When `status --run <run_id>` can't read `meta.json` but can read `result.json`, it prints `result.json` with a note at the end of `warnings`; when neither can be read, it fails with an error.
 - For a run marked handled that has no end time, the duration runs to the newest file in the run directory other than `meta.json` and `verdict.json` (marking it handled rewrites `meta.json`, and `judge` often writes `verdict.json` long afterwards).
+
+## await-health
+One check after three minutes (`--check` skips the delay). `runs` gives the latest monitored attempt per group work package, or the specified run, with `status` and `state`; for running work, `activity` shows the latest activity and whether a command is in progress. `queued` lists local admission tickets for the group. `done` only means that all **recorded, monitored** runs have ended and none are queued; it is not a success flag or proof that every launch registered. No matching records means `done: false`. Start another check only while the batch still needs monitoring. This command never cancels, restarts or calls a model. See `references/recovery.md` for decisions.
 
 ## judge and stats
 After a review or discussion ends and Claude has checked it, record what happened to each point with `judge`; `stats` sums these records and the usage up into local results for each model.

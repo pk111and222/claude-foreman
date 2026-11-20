@@ -420,6 +420,29 @@ function buildPage() {
   new vm.Script(/<script>([\s\S]*?)<\/script>/.exec(builtPage)[1]);
   return builtPage;
 }
+
+test('网页内嵌每个模型家族的品牌图标，Codex 与 ChatGPT 分开', () => {
+  const page = buildPage(), context = vm.createContext({ window: {} });
+  vm.runInContext(page.match(/^window\.__AVATARS__ = .*;$/m)[0], context);
+  const source = fs.readFileSync(new URL('../board/web/02-avatars.js', import.meta.url), 'utf8');
+  vm.runInContext(source + '\nglobalThis.brand = { avatarFor, avatarSrc, keys: Object.keys(LOOKS) };', context);
+  const { avatarFor, avatarSrc, keys } = context.brand;
+  for (const key of keys) {
+    const icon = fs.readFileSync(new URL(`../board/avatars/${key}.png`, import.meta.url));
+    assert.equal(avatarSrc(key), `data:image/png;base64,${icon.toString('base64')}`);
+    assert.equal(icon.readUInt32BE(16), 128);
+    assert.equal(icon.readUInt32BE(20), 128);
+  }
+  assert.notEqual(avatarSrc('codex'), avatarSrc('chatgpt'));
+  assert.equal(avatarFor('gpt-6.1-sol', 'codex cli'), 'codex');
+  assert.equal(avatarFor('gpt-6.1-sol', 'api'), 'chatgpt');
+  assert.equal(avatarFor('gpt-5-codex', 'api'), 'codex');
+  assert.equal(avatarFor(null, 'codex cli'), 'codex');
+  assert.equal(avatarFor(null, 'host'), 'claude');
+  assert.equal(avatarFor('opencode-go/deepseek-r1-distill-qwen', 'opencode cli'), 'deepseek');
+  assert.equal(avatarFor('custom-model', 'api'), 'unknown');
+  assert.equal(avatarSrc('unmapped'), avatarSrc('unknown'));
+});
 // 网页席位的身份行：状态记号（.mk）+ 模型名（b），和终端的一行对得上
 const webSeatHead = (el) => `${el.querySelector('.mk').textContent} ${el.querySelector('b').textContent}`;
 class DisplayElement {
