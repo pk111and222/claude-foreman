@@ -27,7 +27,7 @@
 
 ## 安装和设置
 
-这是 [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman) 的 [pk111and222 分支仓库](https://github.com/pk111and222/claude-foreman)。本仓库复用了 CodeBuddy 接入，增加了 [DSH 和 ZCode 的只读讨论与文本审查](#接入-dsh-和-zcode)，并[优化了高分屏上的网页看板渲染](tools/board-bench/render-performance.md)。
+这是 [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman) 的 [pk111and222 分支仓库](https://github.com/pk111and222/claude-foreman)。本仓库复用了 CodeBuddy 接入，接入了 [DSH 和 ZCode（DSH 可授权执行）](#接入-dsh-和-zcode)，并[优化了高分屏上的网页看板渲染](tools/board-bench/render-performance.md)。
 
 ### 在 Claude Code 中安装本仓库版本
 
@@ -316,7 +316,7 @@ flowchart TD
 
 以前平铺的 `modules`（下面直接是 `discuss`、`run` 等）照常能读：第一次读到时插件把它原样放进 `modules.default`，原文件先备份。旧的 `levels` 写法也照常能读：第一次读到时，插件把它改写成 `modules`，每一格的协作方、推理强度和顺序都不变，原文件备份为 `config.json.bak`。注意一处变化：以前讨论一级里写的模型全部参加，改写后它们是候选、由 Claude Code 挑；想保留全员参加，就给它们都标上 `"required": true`，`/foreman:setup` 可以帮着标，也会帮你加上图像两格。
 
-### 六种协作方
+### 协作方类型
 
 | `type` | 是什么 | 能做的任务 | 自己读代码 | 隔离 | 用谁的额度 |
 |---|---|---|---|---|---|
@@ -325,7 +325,7 @@ flowchart TD
 | `pi cli` | 本机的 pi，接入它支持的各家模型 | 同 opencode | 能 | 同 opencode，读写路径由插件注入的守卫检查 | 在 pi 里登录的厂商 |
 | `agy cli` | 本机的 Agy CLI（Google Antigravity CLI） | 审查、讨论 | 能 | 插件装在 agy 全局钩子里的守卫；只读命令跑在 agy 的沙箱里 | 在 agy 里登录的 Google 账号 |
 | `codebuddy cli` | 本机的 CodeBuddy CLI（腾讯云代码助手），接入它支持的各家模型 | 审查、讨论；写了 `run_access` 还能执行 | 能 | 项目内路径由权限规则限制；`shell` 无系统沙箱 | 在 codebuddy 里登录的腾讯云账号 |
-| `dsh cli` | 官方 DeepSeek `dsh headless` | 讨论和文本审查 | 能 | DSH `read-only` 预设，不审批 | DSH 配置的账号或密钥 |
+| `dsh cli` | 官方 DeepSeek `dsh headless` | 讨论、文本审查；授权后可执行 | 能 | DSH `read-only` / `workspace-write`，不审批 | DSH 配置的账号或密钥 |
 | `zcode cli` | ZCode 无界面 CLI（macOS） | 讨论及基于传入材料的文本审查 | 不能 | 独立工作目录，macOS 写入沙箱 | ZCode 配置的 provider |
 | `api` | 兼容 OpenAI 接口的模型 | 讨论、审查（只审文本） | 不能，Claude Code 把相关文件附过去 | 不涉及 | 厂商的 API 余额 |
 
@@ -391,7 +391,10 @@ Claude Code 每次进入讨论、执行或审查时，都按这一类的标准�
 
 ### 接入 DSH 和 ZCode
 
-在 `agents` 里加 `"dsh": { "type": "dsh cli" }` 或 `"zcode": { "type": "zcode cli" }`，然后把代号加到目标 `modules.<场景>.discuss` 和 `review` 格子。不写 `model`、`effort` 或 `run_access`。DSH 使用官方 `dsh headless`，不走 `dsh-tui`；ZCode 需要能在 macOS 上启动的独立 Agent CLI（`zcode --version`）；仅安装桌面版不够。为 Foreman 单独指定可用的个人 provider 和默认模型，桌面登录态不会自动传给 worker。详见[配置和版本要求](foreman/skills/dispatch/references/config.md)。先跑 `check --agent dsh` / `check --agent zcode`；讨论可以续接，审查按 Foreman 原有规则不续接。参见[实测说明](docs/headless-worker-verification.md)。
+- **DSH**：用官方 `dsh headless`，不走 `dsh-tui`。用户配置的 `agents` 中写 `"dsh": { "type": "dsh cli" }` 即可参加讨论和审查。要让它接简单执行，经用户授权后在同一个协作方加 `"run_access": "workspace-write"`，并把 `{ "agent": "dsh" }` 加到 `modules.default.run.simple`。执行用 DSH 的 `workspace-write`，讨论和审查仍用 `read-only`；均不审批，不接受 `--add-dir`。
+- **ZCode**：仍只参加讨论和审查。加 `"zcode": { "type": "zcode cli" }`，需要 macOS 上可运行的独立 Agent CLI 和个人 provider 配置；仅安装桌面版不够。
+
+两者都用 CLI 自己配置的默认模型，不填 `model` 或 `effort`，不要假定能沿用桌面登录态。配置后先跑 `check --agent dsh` / `check --agent zcode`。详见[配置和版本要求](foreman/skills/dispatch/references/config.md)与[实测说明](docs/headless-worker-verification.md)。
 
 ### 接入 agy
 

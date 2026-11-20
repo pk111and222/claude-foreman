@@ -100,7 +100,7 @@ test('an unavailable zcode executable is not treated as a model catalogue failur
   assert.equal(probe.agents.zcode.fix, MESSAGES.zh.zcodeCliMissing);
 });
 
-test('DSH rejects model overrides and write access', async (t) => {
+test('DSH rejects model overrides and unsupported access levels', async (t) => {
   const h = setup(t, 'dsh');
   const override = await h.run('unused', '--model', 'not-the-cli-default');
   assert.notEqual(override.code, 0);
@@ -110,6 +110,55 @@ test('DSH rejects model overrides and write access', async (t) => {
   const writeAccess = await h.bridge(['config', '--cwd', h.cwd]);
   assert.notEqual(writeAccess.code, 0);
   assert.match(writeAccess.stderr, /run_access/);
+});
+
+test('DSH execution requires user opt-in; a project cannot grant it', async (t) => {
+  const h = setup(t, 'dsh');
+  const run = ['run', '--cwd', h.cwd, '--level', 'simple', '--agent', 'dsh', '--brief', '-'];
+  h.write('.claude/foreman.json', JSON.stringify({ agents: { dsh: { run_access: 'workspace-write' } } }));
+  const rejected = await h.bridge(run, { input: 'write-marker' });
+  assert.notEqual(rejected.code, 0);
+  assert.match(rejected.stderr, /run_access.*workspace-write/);
+  assert.ok(!fs.existsSync(path.join(h.cwd, 'marker.txt')));
+  h.configured.modules.default.run.simple = [{ agent: 'dsh' }];
+  h.config(h.configured);
+  const invalid = await h.bridge(['config', '--cwd', h.cwd]);
+  assert.notEqual(invalid.code, 0);
+  assert.match(invalid.stderr, /run_access.*workspace-write/);
+});
+
+test('DSH run.simple uses workspace-write, snapshots edits and retains the preset on resume', async (t) => {
+  const h = setup(t, 'dsh');
+  h.initGit();
+  h.configured.agents.dsh.run_access = 'workspace-write';
+  h.configured.modules.default.run.simple = [{ agent: 'dsh' }];
+  h.config(h.configured);
+  ok(await h.bridge(['check', '--agent', 'dsh', '--cwd', h.cwd]));
+  const args = ['run', '--cwd', h.cwd, '--level', 'simple', '--brief', '-'];
+  const denied = await h.bridge([...args, '--add-dir', h.home], { input: 'write-marker' });
+  assert.notEqual(denied.code, 0);
+  assert.match(denied.stderr, /--add-dir/);
+  assert.match((await h.bridge([...args, '--no-snapshot'], { input: 'write-marker' })).stderr, /DSH.*--no-snapshot/);
+  const result = ok(await h.bridge(args, { input: 'write-marker first-invalid' }));
+  assert.equal(result.sandbox, 'workspace-write');
+  assert.equal(result.run_access, 'workspace-write');
+  assert.equal(result.report.status, 'completed');
+  assert.equal(result.usage_scope, 'this_run');
+  assert.ok(result.changes.files.some((f) => f.path === 'marker.txt' && f.by === 'agent'));
+  const next = ok(await h.bridge(['resume', '--run', result.run_id, '--level', 'simple', '--reason', 'rework', '--brief', '-'], { input: 'resume-marker' }));
+  assert.equal(next.sandbox, 'workspace-write');
+  assert.equal(next.session_id, result.session_id);
+  assert.equal(next.parent, result.run_id);
+  assert.equal(ok(await h.run('read-only discussion')).sandbox, 'read-only');
+  h.write('source.txt', 'after\n');
+  assert.equal(ok(await h.bridge(h.args('review', '--uncommitted'), { input: 'material-marker' })).sandbox, 'read-only');
+
+  delete h.configured.agents.dsh.run_access;
+  h.configured.modules.default.run.simple = 'claude code';
+  h.config(h.configured);
+  const revoked = await h.bridge(['resume', '--run', result.run_id, '--level', 'simple', '--reason', 'rework', '--agent', 'dsh', '--brief', '-'], { input: 'resume-marker' });
+  assert.notEqual(revoked.code, 0);
+  assert.match(revoked.stderr, /run_access.*workspace-write/);
 });
 
 test('ZCode counts UTF-8 bytes before launching', { skip: !mac }, async (t) => {

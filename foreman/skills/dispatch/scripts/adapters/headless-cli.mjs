@@ -1,11 +1,11 @@
-// 只读 headless worker 共用的进程、材料和事件生命周期。协议、权限和启动方式由各工具适配器决定。
+// headless worker 共用的进程、材料和事件生命周期。协议、权限和启动方式由各工具适配器决定。
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { DISCUSS_SCHEMA, REVIEW_SCHEMA } from '../config.mjs';
+import { DISCUSS_SCHEMA, REVIEW_SCHEMA, SCHEMA } from '../config.mjs';
 import { MAX_REVIEW_CHARS, reviewPatchText } from '../review-scope.mjs';
 import { announceBoard, cancelSource, isCancelled, newRunDir } from '../records.mjs';
-import { eventWriter, finishDiscussion, reportWithRepair, runLimits, spawnCli, startRun, validateSchema } from '../runner.mjs';
+import { eventWriter, execute, finishDiscussion, reportWithRepair, runLimits, spawnCli, startRun, validateSchema } from '../runner.mjs';
 import { binCommand, die, filesOutside, focusFiles, killTree, M, pathCommand, readAttachments } from '../util.mjs';
 import { D, modelLabel } from '../format.mjs';
 import { defaultMaxParallel } from './parallel.mjs';
@@ -57,6 +57,7 @@ function invoke(spec, launch, { session, prompt, deadline, stallMin = 0, dir, on
     const errors = [], questions = [], messages = [], tools = new Map();
     let status, sessionId, terminal = false, last = '', usage = null, commands = 0, activity = Date.now(), stderr = '';
     let killTimer, child, outsideGroup = [], identityError = false;
+    const fileChanges = new Set();
     const fail = (error) => { if (typeof error === 'string' && error && errors.length < 20) errors.push(error.slice(0, 2000)); };
     const log = (file, text) => { if (dir) fs.appendFileSync(path.join(dir, file), text); };
     const setSession = (id) => {
@@ -86,19 +87,21 @@ function invoke(spec, launch, { session, prompt, deadline, stallMin = 0, dir, on
         for (const [key, n] of Object.entries(sample)) if (Number.isFinite(n) && n >= 0) usage[key] = (usage[key] ?? 0) + n;
         event({ type: 'step.usage', usage: sample });
       },
-      tool(id, name, input) {
+      tool(id, name, input, changedPath) {
         if (typeof id !== 'string' || !id || typeof name !== 'string' || tools.has(id)) return;
         const shell = ['bash', 'shell', 'exec'].includes(name.toLowerCase());
         const category = shell ? 'shell' : /^(read|read_file)$/i.test(name) ? 'read' : /^(grep|glob)$/i.test(name) ? 'search' : 'tool';
         const item = { id, type: 'command_execution', category, tool: name,
           command: (shell && typeof input?.command === 'string' ? input.command : name).slice(0, 1000) };
         if (shell) commands++;
-        tools.set(id, item);
+        tools.set(id, { item, changedPath });
         event({ type: 'item.started', item });
       },
       toolResult(id, error, output, code) {
-        const item = tools.get(id);
-        if (!item) return;
+        const call = tools.get(id);
+        if (!call) return;
+        const { item, changedPath } = call;
+        if (!error && changedPath) fileChanges.add(changedPath);
         tools.delete(id);
         event({ type: 'item.completed', item: { ...item, exit_code: error ? 1 : item.category === 'shell' ? code ?? 0 : 0, aggregated_output: typeof output === 'string' ? output.slice(0, 2000) : '' } });
       },
@@ -170,14 +173,56 @@ function invoke(spec, launch, { session, prompt, deadline, stallMin = 0, dir, on
         if (code === 0 && !terminal && !errors.length) fail(M.headlessProtocol(spec.label));
         status = code === 0 && terminal && !errors.length ? 'done' : 'failed';
       }
-      resolve({ status, errors, questions, messages, commands, usage, sessionId: identityError ? null : sessionId, invalidSession: identityError, last });
+      resolve({ status, errors, questions, messages, commands, usage, fileChanges, sessionId: identityError ? null : sessionId, invalidSession: identityError, last });
     });
   });
 }
 
+async function headlessSession(spec, launch, run, schema) {
+  const { ctx, started, meta, writeMeta } = run;
+  const { dir, kind, prompt } = ctx;
+  for (const file of [`${spec.name}.jsonl`, 'stderr.log']) fs.writeFileSync(path.join(dir, file), '');
+  const emit = eventWriter(dir), { deadline, stallMin } = runLimits(ctx, started);
+  const errors = [], warnings = [], notes = [], observed = { messages: [], questions: [] }, fileChanges = new Set();
+  let last = '', usage = null, commands = 0, next = prompt, status;
+  const report = await reportWithRepair({ schema: JSON.parse(schema), validate: validateSchema, allowQuestion: kind !== 'review',
+    onInvalid: () => warnings.push(M.reportInvalid(meta.agent, path.join(dir, 'last-message.txt'))),
+    repair: (invalid) => { next = M.reportRepairPrompt(invalid.join('\n')); },
+    request: async () => {
+      const result = await invoke(spec, launch, { prompt: next, session: meta.session_id, deadline, stallMin, dir, event: emit,
+        onSession(sid) {
+          if (meta.session_id === sid) return;
+          meta.session_id = sid;
+          writeMeta();
+          emit({ type: 'thread.started', thread_id: sid });
+        },
+      });
+      if (result.invalidSession) meta.session_id = null;
+      status = result.status;
+      errors.push(...result.errors);
+      observed.messages.push(...result.messages);
+      observed.questions.push(...result.questions);
+      if (result.last !== undefined) last = result.last;
+      commands += result.commands ?? 0;
+      for (const file of result.fileChanges ?? []) fileChanges.add(file);
+      if (result.usage) {
+        usage ??= {};
+        for (const [key, n] of Object.entries(result.usage)) usage[key] = (usage[key] ?? 0) + n;
+      }
+      return status === 'done' ? { last, canRepair: !!result.sessionId } : null;
+    },
+  });
+  if (status === 'cancelled') errors.push(M.runCancelled(spec.label, cancelSource(dir) ?? 'signal'));
+  if (status === 'stalled') errors.push(M.stalled(stallMin));
+  if (!observed.messages.length && last) emit({ type: 'item.completed', item: { type: 'agent_message', text: last } });
+  fs.writeFileSync(path.join(dir, 'last-message.txt'), report ? JSON.stringify(report, null, 2) : last);
+  return { status, code: status === 'done' ? 0 : 1, usage, usage_scope: usage ? 'this_run' : null, commands, errors, notes, warnings,
+    report, last, observed, ...observed, fileChanges, images: [] };
+}
+
 export function headlessAdapter(spec) {
-  const type = `${spec.name} cli`;
-  const capabilities = { modes: ['discuss', 'review'], isolation: spec.isolation, reads_code: spec.readsCode, reads_images: false,
+  const type = `${spec.name} cli`, access = spec.runAccess;
+  const capabilities = { modes: [...(access ? ['run'] : []), 'discuss', 'review'], isolation: spec.isolation, reads_code: spec.readsCode, reads_images: false,
     native_schema: false, native_review: false, images: false, resume: true, command_start_events: spec.readsCode };
   const locate = (agent) => headlessCommand(agent, spec.name);
   const versionOf = (agent) => {
@@ -193,9 +238,10 @@ export function headlessAdapter(spec) {
     validate(agent, key, check, text) {
       check(agent.bin == null || text(agent.bin) && path.isAbsolute(agent.bin), `${key}.bin`, M.headlessAbsoluteBin);
       check(agent.model == null, `${key}.model`, M.headlessManagedModel(spec.label));
-      check(agent.run_access === undefined, `${key}.run_access`, M.headlessReadOnly(spec.label));
+      check(agent.run_access === undefined || (access && agent.run_access === access), `${key}.run_access`,
+        access ? M.dshRunAccess : M.headlessReadOnly(spec.label));
     },
-    status: (agent) => ({ bin: agent.bin || spec.name }),
+    status: (agent) => ({ bin: agent.bin || spec.name, ...(access ? { run_access: agent.run_access ?? null } : {}) }),
     catalog(agent) {
       const probe = versionOf(agent);
       return { ...probe, ok: !!probe.version, models: [], cli_managed_model: true };
@@ -204,7 +250,7 @@ export function headlessAdapter(spec) {
       const started = Date.now();
       const out = { ...versionOf(agent), ok: false, type, model: null, model_listed: null, reply: null, fix: null, efforts: [] };
       if (out.version) try {
-        const launch = spec.prepare({ command: locate(agent), cwd });
+        const launch = spec.prepare({ command: locate(agent), cwd, kind: 'discuss' });
         const result = await invoke(spec, launch, { prompt: 'Reply with the single word OK.', deadline: Date.now() + 120000 });
         out.reply = result.last?.trim().slice(0, 40) || null;
         out.ok = result.status === 'done' && /^OK[.!]?$/i.test(out.reply || '');
@@ -215,57 +261,30 @@ export function headlessAdapter(spec) {
     },
     validateResume(parent) { if (!parent.meta.session_id) die(M.noSession(parent.id)); },
     async execute(ctx) {
-      if (ctx.addDirs?.length) die(M.headlessNoAddDir(spec.label));
-      const files = readAttachments(ctx.opts.file, ctx.cwd, !spec.readsCode);
+      const { addDirs, kind, agent, agentName, cwd } = ctx, exec = kind === 'exec';
+      if (exec && (!access || agent.run_access !== access)) die(M.runAccessRequired(agentName, type));
+      if (addDirs?.length) die(exec ? M.dshNoRunAddDir : M.headlessNoAddDir(spec.label));
+      const files = readAttachments(ctx.opts.file, cwd, !spec.readsCode);
       if (spec.readsCode) {
-        const outside = filesOutside(files, [ctx.cwd]);
-        if (outside.length) die(M.filesOutsideCwd(ctx.agentName, M.list(outside), false));
+        const outside = filesOutside(files, [cwd]);
+        if (outside.length) die(M.filesOutsideCwd(agentName, M.list(outside), false));
       }
-      const schemaText = fs.readFileSync(ctx.kind === 'review' ? REVIEW_SCHEMA : DISCUSS_SCHEMA, 'utf8');
-      const prompt = spec.prompt(ctx, files, schemaText);
-      const launch = spec.prepare({ command: locate(ctx.agent), cwd: ctx.cwd });
+      const schema = fs.readFileSync(exec ? SCHEMA : kind === 'review' ? REVIEW_SCHEMA : DISCUSS_SCHEMA, 'utf8');
+      const prompt = spec.prompt(ctx, files, schema);
+      const launch = spec.prepare({ command: locate(agent), cwd, kind });
       const { id, dir, release } = await newRunDir(ctx);
-      const run = startRun({ ...ctx, id, dir, release, prompt, readonly: spec.isolation }, { modelShown: M.headlessDefaultModel, sandbox: spec.sandbox });
-      fs.writeFileSync(path.join(dir, 'brief.md'), prompt);
-      fs.writeFileSync(path.join(dir, `${spec.name}.jsonl`), '');
-      fs.writeFileSync(path.join(dir, 'stderr.log'), '');
+      const context = { ...ctx, id, dir, release, prompt, ...(exec ? {} : { readonly: spec.isolation }) };
+      if (exec) return execute(context, {
+        capabilities, describe: () => ({ sandbox: access, modelShown: M.headlessDefaultModel, modelName: M.headlessDefaultModel }),
+        run: ({ run }) => headlessSession(spec, launch, run, schema),
+      });
+      const run = startRun(context, { modelShown: M.headlessDefaultModel, sandbox: spec.sandbox });
       process.stderr.write(`foreman: ${D.started(ctx.mode, modelLabel(run.meta), ctx.level, dir)}\n`);
       announceBoard(ctx.cfg, ctx.mode, modelLabel(run.meta), ctx.level);
-      const emit = eventWriter(dir), { deadline, stallMin } = runLimits(ctx, run.started);
-      const errors = [], warnings = [], notes = [], observed = { messages: [], questions: [] };
-      let last = '', usage = null, commands = 0, next = prompt;
-      const report = await reportWithRepair({ schema: JSON.parse(schemaText), validate: validateSchema, allowQuestion: ctx.kind !== 'review',
-        onInvalid: () => warnings.push(M.reportInvalid(ctx.agentName, path.join(dir, 'last-message.txt'))),
-        repair: (invalid) => { next = M.reportRepairPrompt(invalid.join('\n')); },
-        request: async () => {
-          const result = await invoke(spec, launch, { prompt: next, session: run.meta.session_id, deadline, stallMin, dir, event: emit,
-            onSession(sid) {
-              if (run.meta.session_id === sid) return;
-              run.meta.session_id = sid;
-              run.writeMeta();
-              emit({ type: 'thread.started', thread_id: sid });
-            },
-          });
-          if (result.invalidSession) run.meta.session_id = null;
-          run.meta.status = result.status;
-          errors.push(...result.errors);
-          observed.messages.push(...result.messages);
-          observed.questions.push(...result.questions);
-          if (result.last !== undefined) last = result.last;
-          commands += result.commands ?? 0;
-          if (result.usage) {
-            usage ??= {};
-            for (const [key, n] of Object.entries(result.usage)) usage[key] = (usage[key] ?? 0) + n;
-          }
-          return result.status === 'done' ? { last, canRepair: !!result.sessionId } : null;
-        },
-      });
-      if (run.meta.status === 'cancelled') errors.push(M.runCancelled(spec.label, cancelSource(dir) ?? 'signal'));
-      if (run.meta.status === 'stalled') errors.push(M.stalled(stallMin));
-      if (!observed.messages.length && last) emit({ type: 'item.completed', item: { type: 'agent_message', text: last } });
-      fs.writeFileSync(path.join(dir, 'last-message.txt'), report ? JSON.stringify(report, null, 2) : last);
-      return finishDiscussion(run, { usage, commands, errors, notes, warnings, report, last, files, observed, sandbox: spec.sandbox,
-        changesNote: M.headlessNoChanges(spec.label) });
+      fs.writeFileSync(path.join(dir, 'brief.md'), prompt);
+      const result = await headlessSession(spec, launch, run, schema);
+      run.meta.status = result.status;
+      return finishDiscussion(run, { ...result, files, sandbox: spec.sandbox, changesNote: M.headlessNoChanges(spec.label) });
     },
   };
 }

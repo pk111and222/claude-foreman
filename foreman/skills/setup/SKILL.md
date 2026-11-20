@@ -47,7 +47,7 @@ $ARGUMENTS
    - `environment.codex.external_provider` 为 `true` 时，不要要求 `codex login`，也不要把 Codex 的内置模型清单当成自定义接口的白名单；按用户已验证或确认支持的模型来配。
    - pi 遇到模型不支持的档位不报错，会悄悄换一档，所以推理强度只从 ② 里列出的档位里选。
    - agy 的协作方 `model` 写模型族（比如 `gemini-3.8-flash`），档位写在格子的 `effort` 里，只从 ② 里这个模型列出的档位里选；没有档位的不写。
-   - DSH 和 ZCode 用各自 CLI 的默认模型，不填 `model` 和 `effort`，只放进讨论和审查格子。安装和配置条件见 `references/config.md`。
+   - DSH 和 ZCode 用各自 CLI 的默认模型，不填 `model` 和 `effort`。ZCode 只参加讨论和审查；DSH 默认也只读，得到用户明确同意后才给它配置 `run_access: "workspace-write"` 并加入执行格子。安装和配置条件见 `references/config.md`。
 
 3. **新加 API 模型时查文档**：只在用户要新加 API 模型，或者要把还没放进任何格子的 API 协作方放进格子时做。已经在用的 API 协作方沿用现在的推理强度，不再查。
    - 用网页搜索查厂商的**官方文档**（厂商自己的域名），不用第三方文章。查清：模型名、OpenAI 兼容接口的地址（`base_url`）、是否接受 `reasoning_effort`、可选值有哪些。
@@ -121,7 +121,7 @@ $ARGUMENTS
 - 推理强度只从 ② 里列出的档位选，按模型的档位分两种（`config` 输出里候选的 `tier`，或者 `cli.mjs tiers --model <模型>`；未评级的按中档算）：
   - **弱档、中档模型三级都选最高档**（比如 `max`、`xhigh`；只有一档的就用那一档）。它们主要当第 1 轮独立出稿的广度席，想得深一点才更容易查出别人漏的东西；这类模型便宜，开到最高档多花得有限。价格明显偏高的弱档模型照样用最高档，但按下面的规则只放在 complex。
   - **强档模型按等级选**：simple 选偏低的一档（比如 `medium`），normal 选默认档或高一档（比如 `high`），complex 选最高的常用档（比如 `max`）。更高的档位在说明里写着明显更慢、更贵时，用户要求才推荐。
-- 执行可以交给 `codex cli`，或者写了 `run_access` 的 `opencode cli`、`pi cli`、`codebuddy cli`。审查优先用 Codex（能跑只读命令核实，也是目前唯一能看图、能做截图检查的）；opencode、pi、agy、CodeBuddy 和 API 也能审，API 只能审文本材料（补丁、文件内容），不能审截图。
+- 执行可以交给 `codex cli`，或者写了 `run_access` 的 `opencode cli`、`pi cli`、`codebuddy cli`、`dsh cli`。审查优先用 Codex（能跑只读命令核实，也是目前唯一能看图、能做截图检查的）；opencode、pi、agy、CodeBuddy 和 API 也能审，API 只能审文本材料（补丁、文件内容），不能审截图。
 - Codex 的讨论和审查推荐设只读沙箱：在 `agents.<代号>.sandbox` 里把 `review`、`discuss` 设成 `"read-only"`，系统会拦下写入（结果的只读保障是 `sandbox`）；不设时只靠规则和事后对比快照（`audited`）。Windows 上设之前看 ① 的 Codex 沙箱：只读沙箱起不来时，按 `check` 的修法在 `~/.codex/config.toml` 的 `[windows]` 里写 `sandbox = "unelevated"`。执行的沙箱不在这里改。
 - 审查尽量和执行用不同的模型：同一个模型审自己写的改动，盲区会重复。能做审查的只有执行用的那个模型时，照常推荐，并在理由里说明这一点（到时 Claude Code 会在汇报里注明是同一个模型审的）。
 - 同一家厂商的账号可能被 opencode、pi 和 API 共用，并发按账号算（比如有的 Moonshot 账号同时只允许 1 个请求）：同一级讨论里不要放两个用同一个受限账号的参与方。
@@ -131,11 +131,12 @@ $ARGUMENTS
 - **图像两格**：`generate` 只能放能出图的协作方（目前只有 `codex cli`），推荐 gpt-6.1-sol、`medium`：出图质量主要看图像模型，推理强度调高只是多花额度。`draw` 放能执行的强档模型，推荐 gpt-6-astra、`max`：照定稿图描会弯的部件、写变形要反复推敲。没有 Codex 时两格写 `null`；用户不想出图时 `generate` 写 `null`，不想外派手画时 `draw` 写 `null`（由 Claude Code 自己画）。
 - **agy**（`agy cli`）：只能参加讨论和审查，目前只验证了 Windows 11。它和 Google 账号的订阅额度挂钩、按 5 小时窗口算，默认并发 2，推荐放进讨论和审查的 normal、complex 当候选，不推荐标必选。配置里已经有 agy 协作方、而 `agy-guard status` 或 check 报守卫没装或守卫文件不一致时，放进 ④：推荐安装（同样要经上面的同意弹窗）。check 报项目或全局有别的 agy 钩子、MCP 或插件配置时，在理由里说明这些情况下不会派 agy，要不要处理由用户决定，插件不替用户改这些文件。
 - **CodeBuddy**（`codebuddy cli`）：可参加讨论、审查和执行。讨论与审查用 `dontAsk` 权限模式和用户级设置，项目配置的 hooks 不会加载；`edit` 用 `acceptEdits` 模式开放项目内 `Write`/`Edit`，`shell` 可运行命令且没有系统沙箱，命令以当前账户权限访问整台机器。不要默认推荐执行；用户明确同意后再写 `run_access`，选择 `shell` 前先明确告知并取得用户对“没有系统沙箱”的同意。
+- **DSH**（`dsh cli`）：只有用户明确同意才在用户配置里写 `run_access: "workspace-write"`。执行用官方 DSH 沙箱（不审批、不额外授予目录；DSH 可能允许写入系统临时目录）；讨论和审查始终只读。ZCode 不接执行。
 - **不默认推荐让 opencode、pi 或 CodeBuddy 做执行**。用户想要时讲清权限范围，用户明确同意并选好一档后才写 `run_access`：
   - `"edit"`：只能改项目里的文件，不能运行命令，测试由 Claude Code 事后跑；
   - `"shell"`：还能运行命令。opencode、pi 和 CodeBuddy 都没有系统沙箱，命令以用户的账户权限运行、能访问整台机器。选这一档要请用户明确确认接受"没有系统沙箱"。
 
 ## 特殊情况
-**只有 API、没有 Codex、opencode、pi 和 CodeBuddy 时**：在 ④ 前面说明，执行只能由 Claude Code 自己做，讨论和审查可以交给 API（审查只审文本材料，不能看截图）；想让外部模型干活，需要装 Codex、opencode、pi 或 CodeBuddy；看图目前只有 Codex。
+**只有 API、没有已授权的 CLI 执行方时**：在 ④ 前面说明，执行只能由 Claude Code 自己做，讨论和审查可以交给 API（审查只审文本材料，不能看截图）；想让外部模型干活，需要 Codex 或显式授权的 opencode、pi、CodeBuddy 或 DSH；看图目前只有 Codex。
 
 **什么都没有时**：只给 ①，然后说明插件现在由 Claude Code 自己完成所有工作。想接入外部模型，可以装 Codex CLI（`npm install -g @openai/codex`，再运行 `codex login`）、装 opencode（`npm install -g @opencode/cli`）、装 pi（`npm install -g @earendil-works/pi-coding-agent`）、装 CodeBuddy（`npm install -g @tencent-ai/codebuddy-code`），或者准备一个 API key。装好后再运行一次 `/foreman:setup`。

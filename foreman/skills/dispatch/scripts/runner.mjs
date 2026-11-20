@@ -289,7 +289,7 @@ async function execute(ctx, { run: runAgent, stats: sessionStats = () => null, d
   fs.writeFileSync(path.join(dir, 'brief.md'), prompt);
   process.stderr.write(`foreman: ${ctx.module === 'image' ? D.startedImage(mode === 'resume' ? 'resume' : 'image', modelLabel(meta, { source: true }), ctx.cell, '①②③④'[ctx.route - 1], dir) : D.started(mode, modelLabel(meta, { source: true }), level, dir)}\n`);
   announceBoard(ctx.cfg, mode, modelLabel(meta, { source: true }), level, ctx.module === 'image' ? { cell: ctx.cell, mark: '①②③④'[ctx.route - 1] } : null);
-  if (snapshotRequired) notice(M.unsandboxedRun(agent.run_access));
+  if (snapshotRequired && !sandbox) notice(M.unsandboxedRun(agent.run_access));
 
   const warnings = [];
   const notes = [];

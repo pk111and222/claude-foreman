@@ -109,6 +109,10 @@ const zh = {
   headlessManagedModel: (tool) => `${tool} 使用 CLI 自己的默认模型，请在 CLI 中配置，不要填写 model 或传 --model`,
   headlessReadOnly: (tool) => `${tool} 只支持讨论和审查，不接受 run_access`,
   headlessNoAddDir: (tool) => `${tool} 的只读任务不接受 --add-dir`,
+  dshRunAccess: 'DSH 的 run_access 只能是 "workspace-write"，不写则不允许执行',
+  dshNoRunAddDir: 'DSH 执行任务不接受 --add-dir；不能用它扩大可写范围',
+  dshSnapshotRequired: 'DSH 执行必须拍改动快照，不能用 --no-snapshot',
+  dshRunFooter: (schema) => `DSH 使用 workspace-write，不允许请求提权或写入项目外的文件。最后只输出符合以下 schema 的 JSON 对象，不要用代码块包起来：\n${schema}`,
   headlessNoChanges: (tool) => `${tool} 只读任务不追踪文件改动`,
   headlessSessionMismatch: (tool) => `${tool} 返回了不同或无效的会话 ID`,
   headlessProtocol: (tool, reason) => `${tool} 没有返回有效的完成事件${reason ? `（${reason}）` : ''}，请查看原始日志`,
@@ -208,6 +212,7 @@ const zh = {
   reportAccessCodex: '不需要开启',
   reportAccessOff: '未开启（可以开启 edit 或 shell）',
   reportAccessEdit: 'edit（只改项目里的文件，不能运行命令）',
+  reportDshAccess: 'workspace-write（DSH 沙箱，不审批）',
   reportAccessShell: 'shell（还能运行命令，没有系统沙箱）',
   reportNotesTitle: '**提醒**',
   reportNoNotes: '没有要处理的提醒。',
@@ -487,7 +492,8 @@ ${brief}`,
   piNoChanges: 'pi 协作方只能读项目里的文件和搜索，不能改动文件，不追踪改动',
   codebuddyNoChanges: 'CodeBuddy 协作方只能读项目里的文件和搜索，不能改动文件，不追踪改动',
   codebuddyUnsafeSettings: (file, rules) => `CodeBuddy 设置 ${file} 含有会扩大工具权限或无法核实的配置（${rules}），为保证项目目录边界已拒绝启动。请使用没有这些规则和 hooks 的独立 CodeBuddy 配置，或换别的协作方；不要自动修改用户配置`,
-  runAccessRequired: (name, type) => `${name}（${type}）要做执行任务，需要在用户配置里给它写 run_access："edit"（只能改项目里的文件）或 "shell"（还能运行命令，没有系统沙箱）`,
+  runAccessRequired: (name, type) => type === 'dsh cli' ? `${name}（${type}）要做执行任务，请在用户配置里显式设置 run_access: "workspace-write"`
+    : `${name}（${type}）要做执行任务，需要在用户配置里给它写 run_access："edit"（只能改项目里的文件）或 "shell"（还能运行命令，没有系统沙箱）`,
   unsandboxedRun: (access) => access === 'edit'
     ? '这次执行没有系统沙箱，只靠工具权限：只能读写项目目录里的文件，不能运行命令'
     : '这次执行没有系统沙箱：能运行命令，命令以你的账户权限运行、能访问整台机器，改动靠事后的 diff 把关',
@@ -1007,6 +1013,10 @@ const en = {
   headlessManagedModel: (tool) => `${tool} uses the CLI's default model; configure it in the CLI, not with model or --model`,
   headlessReadOnly: (tool) => `${tool} only supports discussions and reviews; run_access is not accepted`,
   headlessNoAddDir: (tool) => `${tool} read-only tasks do not accept --add-dir`,
+  dshRunAccess: 'DSH run_access must be "workspace-write" or omitted (no hands-on work)',
+  dshNoRunAddDir: 'DSH hands-on tasks do not accept --add-dir; writable roots cannot be extended this way',
+  dshSnapshotRequired: 'DSH hands-on runs require a change snapshot; --no-snapshot is not allowed',
+  dshRunFooter: (schema) => `DSH uses workspace-write. Do not request escalation or write outside the project. End with only a JSON object matching this schema, without a code fence:\n${schema}`,
   headlessNoChanges: (tool) => `${tool} read-only tasks do not track file changes`,
   headlessSessionMismatch: (tool) => `${tool} reported a different or invalid session ID`,
   headlessProtocol: (tool, reason) => `${tool} did not report a valid completion${reason ? ` (${reason})` : ''}; see the raw logs`,
@@ -1106,6 +1116,7 @@ const en = {
   reportAccessCodex: 'not needed',
   reportAccessOff: 'off (edit or shell can be turned on)',
   reportAccessEdit: "edit (changes project files only, can't run commands)",
+  reportDshAccess: 'workspace-write (DSH sandbox, no approvals)',
   reportAccessShell: 'shell (can also run commands, no system sandbox)',
   reportNotesTitle: '**Notes**',
   reportNoNotes: 'Nothing to look at.',
@@ -1441,7 +1452,8 @@ ${schema}`,
 JSON schema:
 ${schema}`,
   opencodeResumeFooter: "---\n(Note from the dispatcher: the discussion rules above still apply: read-only, don't just agree, speak plainly, back it up; nobody can answer you while you run. Finish with a single JSON object matching the schema, without a code block.)",
-  runAccessRequired: (name, type) => `${name} (${type}) needs run_access in the user config to do hands-on work: "edit" (only change files in the project) or "shell" (can also run commands, with no OS sandbox)`,
+  runAccessRequired: (name, type) => type === 'dsh cli' ? `${name} (${type}) needs explicit run_access: "workspace-write" in the user config`
+    : `${name} (${type}) needs run_access in the user config to do hands-on work: "edit" (only change files in the project) or "shell" (can also run commands, with no OS sandbox)`,
   unsandboxedRun: (access) => access === 'edit'
     ? "No OS sandbox for this run, only tool permissions: it can read and write files in the project directory and can't run commands"
     : "No OS sandbox for this run: it can run commands, which run with your account's permissions and can reach the whole machine; the diff afterwards is the check",

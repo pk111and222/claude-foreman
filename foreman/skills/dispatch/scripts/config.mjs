@@ -908,7 +908,7 @@ function resolveProfile(cfg, seat, o, adapters, fallbackModel = null, parentAgen
     if (!canGenerate(adapter)) die(M.imagesNotSupported(entry.agent, agent.type));
   } else if (!adapter.capabilities.modes.includes(mode)) die(M.modeNotSupported(entry.agent, agent.type, mode, M.list(adapter.capabilities.modes)));
   if (mode === 'run' && (!image || level === 'draw') && adapter.capabilities.isolation === 'tools' && !agent.run_access) die(M.runAccessRequired(entry.agent, agent.type));
-  if (mode === 'run' && adapter.capabilities.isolation !== 'os' && o['no-snapshot']) die(M.snapshotRequired);
+  if (mode === 'run' && adapter.capabilities.isolation !== 'os' && o['no-snapshot']) die(agent.type === 'dsh cli' ? M.dshSnapshotRequired : M.snapshotRequired);
   if (effort !== undefined && effort !== null && adapter.efforts && !adapter.efforts.includes(effort)) die(M.effortChoices(adapter.efforts.join(' / ')));
   if (o.model != null && adapter.cliManagedModel) die(M.headlessManagedModel(adapter.channel));
   const base = entry.model || agent.model || fallbackModel;

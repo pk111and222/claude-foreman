@@ -27,7 +27,7 @@ Flying into one conversation: four models discussing at once, with each seat's p
 
 ## Install and setup
 
-This is the [`pk111and222/claude-foreman` fork](https://github.com/pk111and222/claude-foreman) of [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman). This fork includes the CodeBuddy integration, adds [DSH and ZCode for read-only discussions and text reviews](#adding-dsh-and-zcode), and [reduces web board render time on high-DPI displays](tools/board-bench/render-performance.md).
+This is the [`pk111and222/claude-foreman` fork](https://github.com/pk111and222/claude-foreman) of [DaydayupV/claude-foreman](https://github.com/DaydayupV/claude-foreman). This fork includes the CodeBuddy integration, adds [DSH and ZCode workers, with opt-in hands-on work for DSH](#adding-dsh-and-zcode), and [reduces web board render time on high-DPI displays](tools/board-bench/render-performance.md).
 
 ### Install this fork in Claude Code
 
@@ -316,7 +316,7 @@ A minimal example: Codex does complex hands-on work and every review, complex di
 
 A flat `modules` from before (with `discuss`, `run` and so on directly under it) still works: the first time the plugin reads it, it moves it unchanged into `modules.default`, backing up the original first. The old `levels` form still works too: the first time the plugin reads it, it rewrites it as `modules`, keeping every cell's agents, efforts and order, and backs up the original as `config.json.bak`. One thing changes: the models at a discussion level used to all take part, and after the rewrite they're candidates Claude Code picks from. To keep everyone taking part, mark them all `"required": true`; `/foreman-en:setup` can mark them, and it adds the two image cells too.
 
-### The six kinds of agents
+### Agent types
 
 | `type` | What it is | Tasks it can do | Reads code itself | Isolation | Whose quota |
 |---|---|---|---|---|---|
@@ -325,7 +325,7 @@ A flat `modules` from before (with `discuss`, `run` and so on directly under it)
 | `pi cli` | pi on this machine, with the models it can reach | Same as opencode | Yes | Same as opencode, with file paths checked by a guard the plugin injects | Providers you signed in to in pi |
 | `agy cli` | Agy CLI (Google Antigravity CLI) on this machine | Reviews, discussions | Yes | A guard the plugin installs in agy's global hooks; read-only commands run in agy's sandbox | The Google account you signed in to in agy |
 | `codebuddy cli` | CodeBuddy CLI (Tencent Cloud's coding assistant) on this machine, with the models it can reach | Reviews and discussions; hands-on work once `run_access` is set | Yes | Project-trusted reads and project-only edit writes; shell has no OS sandbox | The Tencent Cloud account you signed in to in codebuddy |
-| `dsh cli` | Official DeepSeek `dsh headless` | Discussions and text reviews | Yes | DSH `read-only` preset, no approvals | DSH's configured account or key |
+| `dsh cli` | Official DeepSeek `dsh headless` | Discussions, text reviews; opt-in hands-on work | Yes | DSH `read-only` / `workspace-write`, no approvals | DSH's configured account or key |
 | `zcode cli` | ZCode headless CLI (macOS) | Discussions and material-only text reviews | No | Separate workspace, macOS write sandbox | Configured ZCode provider |
 | `api` | A model with an OpenAI-compatible API | Discussions, reviews (text only) | No; Claude Code attaches the relevant files | Not applicable | The provider's API balance |
 
@@ -391,7 +391,10 @@ With the CodeBuddy CLI installed (`npm install -g @tencent-ai/codebuddy-code`, c
 
 ### Adding DSH and ZCode
 
-Add `"dsh": { "type": "dsh cli" }` or `"zcode": { "type": "zcode cli" }` to `agents`, then add their IDs to the desired `modules.<scene>.discuss` and `review` cells. Do not set `model`, `effort` or `run_access`. Use the official `dsh headless` (not `dsh-tui`). ZCode requires a runnable standalone Agent CLI on macOS (`zcode --version`); installing Desktop alone is not enough. Set a personal provider file with a working default model; Foreman does not inherit the Desktop sign-in. See [configuration and version requirements](foreman-en/skills/dispatch/references/config.md) and run `check --agent dsh` / `check --agent zcode` before use. Discussions support resume; reviews follow Foreman's non-resumable review workflow. See the [verification notes](docs/headless-worker-verification.md).
+- **DSH** uses official `dsh headless`, not `dsh-tui`. Add `"dsh": { "type": "dsh cli" }` to `agents` in your user config for discussions and reviews. To enable simple hands-on work, explicitly set `"run_access": "workspace-write"` on the agent and add `{ "agent": "dsh" }` to `modules.default.run.simple`. Runs use DSH's `workspace-write`; discussions and reviews still use `read-only`. Both modes disable approvals and reject `--add-dir`.
+- **ZCode** still only joins discussions and reviews. Add `"zcode": { "type": "zcode cli" }`. It requires a macOS standalone Agent CLI and a personal provider config; installing Desktop alone isn't enough.
+
+Both use the CLI-configured default model. Leave `model` and `effort` unset, and don't assume the worker inherits Desktop sign-in. Run `check --agent dsh` / `check --agent zcode` after configuration. See the [configuration and version requirements](foreman-en/skills/dispatch/references/config.md) and [verification notes](docs/headless-worker-verification.md).
 
 ### Adding agy
 

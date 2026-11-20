@@ -159,12 +159,13 @@ Real 2.180.0 probes found that empty `--setting-sources ""` falls back to the de
 
 Both hands-on levels take a change snapshot before they start; `shell` commands still run with the current account's permissions.
 
-**`type: "dsh cli"` / `type: "zcode cli"`** (read-only CLI workers)
+**`type: "dsh cli"` / `type: "zcode cli"`** (CLI-managed default models)
 
-- Add `{ "type": "dsh cli" }` or `{ "type": "zcode cli" }` to `agents`, optionally with `bin` pointing to an absolute executable or JS entry point. Use the IDs only in `discuss` and `review` cells. Omit `model`, `effort` and `run_access`; the CLI chooses its default model and effort. `models` reports this rather than inventing a catalogue.
-- DSH needs the official `dsh headless` CLI with JSON streaming, `read-only` and `--approval-policy never` (tested with 0.2.2-rc.5). It uses your trusted DSH headless profile and its credentials, not `dsh-tui` or its profiles. Configure it before running `check`.
+- Add `{ "type": "dsh cli" }` or `{ "type": "zcode cli" }` to `agents`, optionally with `bin` (absolute executable or JS entry point). Leave `model` and `effort` unset. `models` checks the CLI but does not list models.
+- DSH defaults to discussions and reviews with official `dsh headless` in `read-only`. With the user's consent, set `"run_access": "workspace-write"` on the DSH agent in the **user config**, then add its ID to a hands-on cell such as `modules.default.run.simple`. Runs and their resumes use `workspace-write`; discussions and reviews still use `read-only`. Both modes use `--approval-policy never` and reject `--add-dir`. Hands-on work requires a change snapshot.
+- DSH uses your trusted headless profile, permission presets, and credentials, not `dsh-tui` (verified on macOS with official CLI 0.2.2-rc.5). Do not disable sandboxing, widen the presets or configure extra writable roots in that profile. DSH's preset may allow writes to system temp directories and does not block all reads or network access. Run `check --agent dsh` after configuration.
 - ZCode on macOS needs a standalone Agent CLI; Desktop alone does not provide a `zcode` command Foreman can call. Install it separately or set `bin` to an existing CLI. The CLI must support `--output-format stream-json` and `--resume` (tested with `zcode-app-cli` 3.18.2-47 and runtime 0.17.1). Set `ZCODE_PERSONAL_PROVIDER_CONFIG_FILE` in the environment that starts Claude Code/Foreman to the **absolute path** of a [ZCode personal provider config](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/03-config.md) with a working default model. Keep that file private and out of Git. Foreman separates worker state from Desktop, does not assume it can reuse Desktop login, and refuses to launch without the macOS write sandbox.
-- Both can resume discussions by run ID, but Foreman's review runs cannot be resumed. Neither supports visual review or writes. ZCode sees only the brief, prepared diff and `--file` text; the full prompt is limited to 96,000 UTF-8 bytes.
+- Both CLIs support resuming discussions. Reviews cannot be resumed, and visual reviews are not supported. ZCode is limited to discussions and reviews and does not accept `run_access`; it sees the brief, prepared diff and `--file` text, with a 96,000 UTF-8 byte prompt limit.
 
 **`type: "api"`** (models with an OpenAI-compatible API)
 
